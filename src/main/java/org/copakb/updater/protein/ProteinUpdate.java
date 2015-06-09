@@ -1,6 +1,9 @@
 package org.copakb.updater.protein;
 
+import org.copakb.server.dao.DAOObject;
+import org.copakb.server.dao.ProteinDAO;
 import org.copakb.server.dao.model.*;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
 import uk.ac.ebi.kraken.interfaces.uniprot.Gene;
 import uk.ac.ebi.kraken.interfaces.uniprot.Keyword;
 import uk.ac.ebi.kraken.interfaces.uniprot.UniProtEntry;
@@ -68,18 +71,34 @@ public class ProteinUpdate {
 
                     // gets the rest of the protein data
                     ProteinCurrent protein = retrieveDataFromUniprot(entry);
+                    protein.setProtein_acc(uniprotid);
+                    DAOObject obj = new DAOObject();
+                    ProteinDAO proteinDAO = obj.getProteinDAO();
 
-                    //Todo insert into ProteinCurrent table
+                    // TODO: need to update database to hold longer protein sequences
+                    // temporary setting sequence to be shorter
+                    protein.setSequence("QWERTYUIOPASDFGHJKL");
+
+                    Species tempSpecies = proteinDAO.searchSpecies(protein.getSpecies().getSpecies_name());
+                    protein.setSpecies(tempSpecies);
+                    String addResult = proteinDAO.addProteinCurrent(protein);
+                    if(addResult.equals("Existed")) {
+                        System.out.println("Uniprot ID: " + uniprotid + " is already in the database.");
+                    }
 
                 }
             }
             scanner.close();
         }catch (Exception ex)
         {
-            if (entry == null)
+            if (entry == null) {
                 System.out.printf("%s:::%s\n%s\n", ex.toString(), uniprotid, ex.getMessage());
-            else
+            }
+            else {
                 System.out.println(ex.toString()+ex.getMessage()+entry.getUniProtId());
+                ex.printStackTrace();
+            }
+
             return;
         }
         //use HPA to get the correct ensemblegeneid for humans
@@ -117,10 +136,15 @@ public class ProteinUpdate {
         ProteinCurrent result = new ProteinCurrent();
 
         String uniprotid = e.getUniProtId().toString();
-        result.setProtein_acc(uniprotid);
+        //result.setProtein_acc(uniprotid); // not correct uniprot id
+        uniprotid = e.getPrimaryUniProtAccession().toString();
         result.setSequence(e.getSequence().getValue());
         result.setMolecular_weight(e.getSequence().getMolecularWeight());
 
+        String species = "";
+        species = String.valueOf(e.getOrganism().getCommonName());
+        Species spec = new Species(0, species, null, null);
+        result.setSpecies(spec);
 
         try{
             result.setProtein_name(e.getProteinDescription().getSection().getNames().get(0).getFields().get(0).getValue());
@@ -245,7 +269,7 @@ public class ProteinUpdate {
         }
         result.setGenes(genes);*/
 
-        // chromosome
+        // TODO: chromosome, but it can be done after table changes
 
         System.out.println("uniprotid = " + uniprotid);
         /*System.out.println("sequence = " + result.getSequence());
@@ -260,6 +284,7 @@ public class ProteinUpdate {
         //System.out.println("ensembl = " + ensembl);
         //System.out.println("crossRef = " + crossRef);
         //System.out.println("goTerms = " + goTerms);
+        //System.out.println("species = " + species);
 
         return result;
     }
