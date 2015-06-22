@@ -18,10 +18,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.sql.Connection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Scanner;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -35,23 +32,31 @@ public class ProteinUpdate {
     }
 
     public static void main(String[] args) {
-        update("./src/main/resources/test.fasta");
+        update("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+        //update("./src/main/resources/test.fasta");
     }
 
 
     // updates ProteinCurrent table given fasta file
     public static void update(String file)
     {
+        Date dateBeg = new Date();
+        System.out.println("BEGINNING: " + dateBeg.toString());
 
-        //Todo: check file type
+        String cleanFile = cleanFilePath(file);
 
         EntryRetrievalService entryRetrievalService = UniProtJAPI.factory.getEntryRetrievalService();
         UniProtEntry entry = null;
         String uniprotid = "";
 
+        DAOObject obj = new DAOObject();
+        ProteinDAO proteinDAO = obj.getProteinDAO();
+
         try
         {
-            Scanner scanner = new Scanner(new FileInputStream(file));
+            PrintWriter writer = new PrintWriter("./src/main/resources/uniprot_not_added.txt", "UTF-8");
+
+            Scanner scanner = new Scanner(new FileInputStream(cleanFile));
             while (scanner.hasNextLine() ){
                 String uniprotheader = scanner.nextLine();
                 if (uniprotheader.startsWith(">") )
@@ -64,31 +69,46 @@ public class ProteinUpdate {
 
                     }catch(Exception ex){
                         System.out.println("Uniprot did not retrieve "+uniprotid+"\t"+ex.toString()+ex.getMessage());
+                        writer.println(uniprotid);
                         continue;
-
                     }
 
+                    if(entry == null) {
+                        System.out.println("Uniprot did not retrieve "+uniprotid + ". Could not find entry.");
+                        writer.println(uniprotid);
+                        continue;
+                    }
+
+                    if(proteinDAO.searchByID(uniprotid) != null) {
+                        System.out.println("Uniprot ID: " + uniprotid + " is already in the database.");
+                        continue;
+                    }
 
                     // gets the rest of the protein data
-                    ProteinCurrent protein = retrieveDataFromUniprot(entry);
-                    protein.setProtein_acc(uniprotid);
-                    DAOObject obj = new DAOObject();
-                    ProteinDAO proteinDAO = obj.getProteinDAO();
+                    ProteinCurrent protein = retrieveDataFromUniprot(entry, proteinDAO);
 
-                    // TODO: need to update database to hold longer protein sequences
-                    // temporary setting sequence to be shorter
-                    protein.setSequence("QWERTYUIOPASDFGHJKL");
+                    String addResult = "";
 
-                    Species tempSpecies = proteinDAO.searchSpecies(protein.getSpecies().getSpecies_name());
-                    protein.setSpecies(tempSpecies);
-                    String addResult = proteinDAO.addProteinCurrent(protein);
+                    if(protein != null) {
+                        protein.setProtein_acc(uniprotid);
+                        addResult = proteinDAO.addProteinCurrent(protein);
+                    }
+                    else { // make list of all uniprot id's that were not added
+                        writer.println(uniprotid);
+                        continue;
+                    }
+
                     if(addResult.equals("Existed")) {
                         System.out.println("Uniprot ID: " + uniprotid + " is already in the database.");
                     }
-
+                    if(addResult.equals("") || addResult.equals("Failed")) {
+                        writer.println(uniprotid);
+                        continue;
+                    }
                 }
             }
             scanner.close();
+            writer.close();
         }catch (Exception ex)
         {
             if (entry == null) {
@@ -102,6 +122,11 @@ public class ProteinUpdate {
             return;
         }
         //use HPA to get the correct ensemblegeneid for humans
+
+        System.out.println("\n\n");
+        System.out.println("BEGINNING: " + dateBeg.toString());
+        Date dateEnd = new Date();
+        System.out.println("ENDING: " + dateEnd.toString());
     }
 
     static String ValideSQL(String sql)
@@ -130,21 +155,33 @@ public class ProteinUpdate {
         return ValideSQL(result);
     }
 
-    static ProteinCurrent retrieveDataFromUniprot(UniProtEntry e){
+    static ProteinCurrent retrieveDataFromUniprot(UniProtEntry e, ProteinDAO proteinDAO){
 
         // initialize
         ProteinCurrent result = new ProteinCurrent();
 
-        String uniprotid = e.getUniProtId().toString();
+        //String uniprotid = e.getUniProtId().toString();
         //result.setProtein_acc(uniprotid); // not correct uniprot id
-        uniprotid = e.getPrimaryUniProtAccession().toString();
-        result.setSequence(e.getSequence().getValue());
-        result.setMolecular_weight(e.getSequence().getMolecularWeight());
+        String uniprotid = e.getPrimaryUniProtAccession().toString();
+        String seq = e.getSequence().getValue();
+        result.setSequence(seq);
+        int molweight = e.getSequence().getMolecularWeight();
+        result.setMolecular_weight(molweight);
+
+        if(uniprotid.length() < 2 || seq.length() < 2 || molweight <= 0.0) {
+            System.out.println("Uniprot ID, Sequence, or Molecular weight could not be found.");
+            return null;
+        }
 
         String species = "";
         species = String.valueOf(e.getOrganism().getCommonName());
+        if(species.length() < 2) {
+            species = String.valueOf(e.getOrganism().getScientificName());
+        }
         Species spec = new Species(0, species, null, null);
-        result.setSpecies(spec);
+        if(proteinDAO.searchSpecies(species) == null)
+            proteinDAO.addSpecies(spec);
+        result.setSpecies(proteinDAO.searchSpecies(species));
 
         try{
             result.setProtein_name(e.getProteinDescription().getSection().getNames().get(0).getFields().get(0).getValue());
@@ -194,6 +231,7 @@ public class ProteinUpdate {
         String goTerms = "", crossRef = "", ensembl = "";
         Set<GoTerms> protGoTerms = new HashSet<GoTerms>();
         Set<String> ensemblIds = new HashSet<String>();
+        Set<String> chromoensemblIds = new HashSet<String>();
 
         for(uk.ac.ebi.kraken.interfaces.uniprot.DatabaseCrossReference d: e.getDatabaseCrossReferences())  {
             String temp_dName = d.getDatabase().getName();
@@ -213,51 +251,67 @@ public class ProteinUpdate {
                 continue;
             }
 
+            // get all related ensembl ids
             if(temp_dName.toUpperCase().contains("ENSEMBL")){
                 if(d.hasThird()) {
                     //System.out.println(d.getThird().getValue());
+                    String chromosomeEnsembl = d.getPrimaryId().getValue();
+                    chromoensemblIds.add(chromosomeEnsembl); // add to HashSet to remove duplicates
                     String tempEnsembl = d.getThird().getValue();
                     ensemblIds.add(tempEnsembl); // add to HashSet to remove duplicates
                     ensembl += d.getThird().getValue() + "\n";
                 }
             }
-
-
             crossRef += d+"\n";
         }
 
+        if(protGoTerms.size() < 1) {
+            System.out.println("Cannot find GO Terms! Aborting.");
+            return null;
+        }
         result.setGoTerms(protGoTerms);
 
         // get gene name
         Set<org.copakb.server.dao.model.Gene> genes = new HashSet<org.copakb.server.dao.model.Gene>();
         // create gene - ensembl mapping information at the end (after duplicates are removed)
+        if(ensemblIds.size() < 1) {
+            System.out.println("Cannot find Ensembl ids! Aborting.");
+            return null;
+        }
+
+        // get chromosome location information from primary ENST key
+        // only returns one from the first location from each listing
+        String loc = "";
+        for(String id : chromoensemblIds) {
+            String tempLoc = Chromosome.getChromosome(id);
+            if(!loc.equals(tempLoc)) {
+                loc = loc + ", " +tempLoc;
+            }
+            if(tempLoc.equals("ie6")) {
+                tempLoc = "";
+            }
+        }
+
         for(String id : ensemblIds)
         {
             try {
+                // get gene information from ensembl
                 String relatedGene = getGeneFromEnsembl(id);
                 org.copakb.server.dao.model.Gene table_gene = new org.copakb.server.dao.model.Gene();
                 table_gene.setGene_name(relatedGene);
                 table_gene.setEnsembl_id(id);
+                table_gene.setChromosome(loc);
                 table_gene.getDiseases();
                 table_gene.getProteins();
                 table_gene.getHpas();
                 genes.add(table_gene);
-                System.out.println("gene = " + relatedGene + "\trelated ensembl = " + id);
+                //System.out.println("gene = " + relatedGene + "\trelated ensembl = " + id);
             }
             catch (Exception exception)
             {
                 exception.printStackTrace();
             }
         }
-        result.setGenes(genes);
-
-        // Todo: Settle out gene/ensembl mapping
-        // If the gene list given by uniprot always matches the corresponding genes referenced by the list of ensembl id
-        // it would be easier to use the ensembl API (as above) to fill in gene/ensembl for Gene object information
-        // There are separate lists so we have to manually check to see which ensembl ids match
-        // to which gene info because there can be multiple ensembl -> one gene AND multiple ensembl -> multiple genes
-        // The following section is commented out in order to ignore the separate Gene list and just
-        // to go by the ensembl list, WILL BE VERIFIED
 
         // get gene name
         /*Set<org.copakb.server.dao.model.Gene> genes = new HashSet<org.copakb.server.dao.model.Gene>();
@@ -266,12 +320,21 @@ public class ProteinUpdate {
             table_gene.setGene_name(gene.getGeneName().getValue());
             genes.add(table_gene);
             System.out.println("gene = " + gene.getGeneName().getValue());
+        }*/
+        if(genes.size() < 1) {
+            System.out.println("Cannot find Genes! Aborting.");
+            return null;
         }
-        result.setGenes(genes);*/
+        result.setGenes(genes);
 
-        // TODO: chromosome, but it can be done after table changes
+    // If the gene list given by uniprot always matches the corresponding genes referenced by the list of ensembl id
+    // it would be easier to use the ensembl API (as above) to fill in gene/ensembl for Gene object information
+    // There are separate lists so we have to manually check to see which ensembl ids match
+    // to which gene info because there can be multiple ensembl -> one gene AND multiple ensembl -> multiple genes
+    // The following section is commented out in order to ignore the separate Gene list and just
+    // to go by the ensembl list, WILL BE VERIFIED
 
-        System.out.println("uniprotid = " + uniprotid);
+        //System.out.println("uniprotid = " + uniprotid);
         /*System.out.println("sequence = " + result.getSequence());
         System.out.println("weight = " + result.getMolecular_weight());
         System.out.println("name = " + result.getProtein_name());
@@ -304,7 +367,6 @@ public class ProteinUpdate {
         HttpURLConnection httpConnection = (HttpURLConnection)connection;
 
         httpConnection.setRequestProperty("Content-Type", "application/json");
-
 
         InputStream response = connection.getInputStream();
         int responseCode = httpConnection.getResponseCode();
@@ -342,7 +404,16 @@ public class ProteinUpdate {
             return geneSymbol;
         }
         return "";
-        //System.out.println(output);
+    }
+
+    public static String cleanFilePath(String file) {
+        String result = file;
+        if(!file.substring(file.length()-6).equals(".fasta"))
+            return null;
+        Pattern textPattern = Pattern.compile("[^0-9A-Za-z/\\._\\- ]");
+        Matcher textMatcher = textPattern.matcher(file);
+        result = textMatcher.replaceAll("");
+        return result;
     }
 
     /*

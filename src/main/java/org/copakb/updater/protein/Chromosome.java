@@ -12,15 +12,25 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
 import java.io.Reader;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 // Connects to HTTP and grabs a JSON structure that contains the chromosome of the specified ensembl id
 public class Chromosome {
+
+    /**
+     * Use Ensembl id to find the location of a gene
+     * @param id Ensembl id
+     * @return the number chomosome the gene is found in
+     */
     public static String getChromosome(String id){
         if(id == "")    // return the empty string if there's no id
             return "";
 
         // Connect to HTTP and read in result from query
-        String server = "http://beta.rest.ensembl.org";
+        String server = "http://rest.ensembl.org";
         String ext = "/map/cdna/"+id+"/100..300?";
         String output;
 
@@ -66,12 +76,13 @@ public class Chromosome {
             System.out.println(ex.getMessage());
             return "";
         }
-        //extract the chromosome information
+
+        // only returns the first location
         int index = output.indexOf("seq_region_name");
         int start = output.indexOf('\"', index+17);
         int end = output.indexOf('\"', start+1);
-
         return output.substring(start+1, end);
+        //return loc;
     }
 
 }
