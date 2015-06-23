@@ -155,7 +155,7 @@ public class ProteinUpdate {
         return ValideSQL(result);
     }
 
-    static ProteinCurrent retrieveDataFromUniprot(UniProtEntry e, ProteinDAO proteinDAO){
+    public static ProteinCurrent retrieveDataFromUniprot(UniProtEntry e, ProteinDAO proteinDAO){
 
         // initialize
         ProteinCurrent result = new ProteinCurrent();
@@ -284,11 +284,14 @@ public class ProteinUpdate {
         String loc = "";
         for(String id : chromoensemblIds) {
             String tempLoc = Chromosome.getChromosome(id);
-            if(!loc.equals(tempLoc)) {
+            if(tempLoc.equals("ie6")) {
+                continue;
+            }
+            if(!loc.equals(tempLoc) && !loc.equals("")) {
                 loc = loc + ", " +tempLoc;
             }
-            if(tempLoc.equals("ie6")) {
-                tempLoc = "";
+            else if (!loc.equals(tempLoc)) {
+                loc = tempLoc;
             }
         }
 
