@@ -70,6 +70,7 @@ public class ProteinUpdate {
                 {
                     uniprotid = uniprotheader.substring(4,uniprotheader.indexOf("|",4) ) ;
                     try{
+                        // fails if it is not the primary uniprotid
                         entry = (UniProtEntry)entryRetrievalService.getUniProtEntry(uniprotid);
                         System.out.println("\n*************************");
                         System.out.println("Able to retrieve "+uniprotid+" from UniProt");
@@ -162,6 +163,12 @@ public class ProteinUpdate {
         return ValideSQL(result);
     }
 
+    /**
+     *
+     * @param e
+     * @param proteinDAO
+     * @return
+     */
     public static ProteinCurrent retrieveDataFromUniprot(UniProtEntry e, ProteinDAO proteinDAO){
 
         // initialize
@@ -266,14 +273,16 @@ public class ProteinUpdate {
                     ensembl += d.getThird().getValue() + "\n";
                 }
             }
-            crossRef += d+"\n";
+            //crossRef += d+"\n";
         }
 
-        if(protGoTerms.size() < 1) {
+        /*if(protGoTerms.size() < 1) {
             System.out.println("Cannot find GO Terms! Aborting.");
             return null;
+        }*/
+        if(protGoTerms.size() >=  1) {
+            result.setGoTerms(protGoTerms);
         }
-        result.setGoTerms(protGoTerms);
 
         // Get genes (with name, id, and chromosome)
         Set<Gene> genes = new HashSet<Gene>();

@@ -11,12 +11,14 @@ import java.util.HashMap;
  */
 public class CopaParser {
     private HashMap fields;
+    private String spectraInfo;
     private String file;
     private BufferedReader reader;
 
     public CopaParser(String filename){
         file = filename;
         fields = new HashMap();
+        spectraInfo = "";
         initializeFile();
     }
     // this function initializes the parser and returns a string stating whether it was a success or not
@@ -41,6 +43,8 @@ public class CopaParser {
     public HashMap getCurrentEntry(){
         return fields;
     }
+
+    public String getSpectraInfo() { return spectraInfo; }
 
     //parses through the header and splits it into fields
     private void processHeader(String header){
@@ -77,6 +81,10 @@ public class CopaParser {
             // read in the first line: contains header
             String line = reader.readLine();
             if(line!=null) {
+                if(line.charAt(0) == 'H')
+                    fields.put("header", line);
+                else
+                    fields.put("header", "H" + line);
                 processHeader(line);
 
                 // store the string of spectra points
