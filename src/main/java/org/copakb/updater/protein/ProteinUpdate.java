@@ -37,13 +37,8 @@ public class ProteinUpdate {
     }
 
     public static void main(String[] args) {
-//        try {
-//            updateFromIDs("data/uniprot_not_added.txt");
-//            //getProteinFromUniprot("P51559");
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
-        //updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+//        updateFromIDs("data/uniprot_not_added.txt");
+//        updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
         updateFromFasta("./src/main/resources/test.fasta");
     }
 
@@ -59,9 +54,6 @@ public class ProteinUpdate {
         EntryRetrievalService entryRetrievalService = UniProtJAPI.factory.getEntryRetrievalService();
         UniProtEntry entry = null;
         String uniprotid = "";
-
-        DAOObject obj = new DAOObject();
-        ProteinDAO proteinDAO = obj.getProteinDAO();
 
         try
         {
@@ -87,6 +79,11 @@ public class ProteinUpdate {
                     if(entry == null) {
                         System.out.println("Uniprot did not retrieve "+uniprotid + ". Could not find entry.");
                         writer.println(uniprotid);
+                        continue;
+                    }
+
+                    if(DAOObject.getProteinDAO().searchByID(uniprotid) != null) {
+                        System.out.println("Uniprot ID: " + uniprotid + " is already in the database.");
                         continue;
                     }
 
@@ -130,8 +127,6 @@ public class ProteinUpdate {
      * @return          Returns True if add successful or protein already exists.
      */
     public static Boolean addProtein(ProteinCurrent protein) {
-        ProteinDAO proteinDAO = new DAOObject().getProteinDAO();
-
         // Attempt to add the protein
         String result = DAOObject.getProteinDAO().addProteinCurrent(protein);
 
@@ -421,26 +416,38 @@ public class ProteinUpdate {
      * @param filename      File with UniProtIDs
      * @throws Exception
      */
-    public static void updateFromIDs(String filename) throws Exception {
+    public static void updateFromIDs(String filename) {
         // Open file and iterate through UniProt IDs
-        FileInputStream inputStream = new FileInputStream(filename);
-        Scanner sc = new Scanner(inputStream, "UTF-8");
-        ArrayList<String> failed = new ArrayList<String>();
-        while (sc.hasNextLine()) {
-            String uniprotID = sc.nextLine();
-            try {
-                getProteinFromUniprot(uniprotID);
-            } catch (Exception e) {
-                failed.add(uniprotID);
-                System.out.println(uniprotID + " (FAILED)"); // TODO Debug
-            } finally {
-                System.out.println(uniprotID);
-            }
-        }
+        FileInputStream inputStream = null;
 
-        System.out.println("Failed: " + failed); // TODO Debug
-        sc.close();
-        inputStream.close();
+        try {
+            inputStream = new FileInputStream(filename);
+            Scanner sc = new Scanner(inputStream, "UTF-8");
+            ArrayList<String> failed = new ArrayList<String>();
+            while (sc.hasNextLine()) {
+                String uniprotID = sc.nextLine();
+
+                if(DAOObject.getProteinDAO().searchByID(uniprotID) != null) {
+                    System.out.println("Uniprot ID: " + uniprotID + " is already in the database.");
+                    continue;
+                }
+
+                try {
+                    if (addProtein(getProteinFromUniprot(uniprotID))) {
+                        System.out.println(uniprotID + " SUCCESS"); // TODO Debug
+                    }
+                } catch (Exception e) {
+                    failed.add(uniprotID);
+                    System.out.println(uniprotID + " FAILED"); // TODO Debug
+                }
+            }
+
+            System.out.println("Failed: " + failed); // TODO Debug
+            sc.close();
+            inputStream.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -580,17 +587,26 @@ public class ProteinUpdate {
 
         // Get species ID
         // TODO Clarify single species per protein
+        // Check scientific name first
         String species = ((Element) proteinElement.getElementsByTagName("organism").item(0))
                 .getElementsByTagName("name").item(0) // First species name should be scientific
                 .getTextContent();
-        protein.setSpecies(DAOObject.getProteinDAO().searchSpecies(species));
+        // Check common name
+        Species speciesID = DAOObject.getProteinDAO().searchSpecies(species);
+        if (DAOObject.getProteinDAO().searchSpecies(species) == null) {
+            species = ((Element) proteinElement.getElementsByTagName("organism").item(0))
+                    .getElementsByTagName("name").item(1) // Second species name should be common
+                    .getTextContent();
+        }
+        speciesID = DAOObject.getProteinDAO().searchSpecies(species);
+        protein.setSpecies(speciesID);
 
         // TODO wiki_link
 
-        // Get genes
+        // Get genes (only take the first gene)
         Set<Gene> genes = new HashSet<Gene>();
         NodeList dbReferences = proteinElement.getElementsByTagName("dbReference");
-        for (int dbRefIndex = 0; dbRefIndex < dbReferences.getLength(); dbRefIndex++) {
+        for (int dbRefIndex = 0; dbRefIndex < 1; dbRefIndex++) {
             Element dbRefElement = (Element) dbReferences.item(dbRefIndex);
             String dbRefType = dbRefElement.getAttribute("type");
             // TODO Create array to check against valid gene dbReference types
