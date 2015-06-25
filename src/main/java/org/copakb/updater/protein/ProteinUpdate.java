@@ -414,17 +414,20 @@ public class ProteinUpdate {
         // Open file and iterate through UniProt IDs
         FileInputStream inputStream = new FileInputStream(filename);
         Scanner sc = new Scanner(inputStream, "UTF-8");
-        ArrayList<String> failed = new ArrayList<>();
-        System.out.println("Failed: "); // TODO Debug
+        ArrayList<String> failed = new ArrayList<String>();
         while (sc.hasNextLine()) {
             String uniprotID = sc.nextLine();
             try {
                 getProteinFromUniprot(uniprotID);
             } catch (Exception e) {
-                System.out.println(uniprotID); // TODO Debug
+                failed.add(uniprotID);
+                System.out.println(uniprotID + " (FAILED)"); // TODO Debug
+            } finally {
+                System.out.println(uniprotID);
             }
         }
 
+        System.out.println("Failed: " + failed); // TODO Debug
         sc.close();
         inputStream.close();
     }
@@ -574,7 +577,7 @@ public class ProteinUpdate {
         // TODO wiki_link
 
         // Get genes
-        Set<Gene> genes = new HashSet<>();
+        Set<Gene> genes = new HashSet<Gene>();
         NodeList dbReferences = proteinElement.getElementsByTagName("dbReference");
         for (int dbRefIndex = 0; dbRefIndex < dbReferences.getLength(); dbRefIndex++) {
             Element dbRefElement = (Element) dbReferences.item(dbRefIndex);

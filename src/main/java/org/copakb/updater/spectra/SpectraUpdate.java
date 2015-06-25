@@ -282,6 +282,7 @@ public class SpectraUpdate {
                     new FileOutputStream(filename), "utf-8"));
             writer.write(spectra);
         } catch (IOException ex) {
+            ex.printStackTrace();
             // report
         } finally {
             try {writer.close();} catch (Exception ex) {/*ignore*/}
