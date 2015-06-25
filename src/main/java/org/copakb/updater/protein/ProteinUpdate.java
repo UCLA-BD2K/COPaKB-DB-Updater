@@ -57,8 +57,7 @@ public class ProteinUpdate {
         UniProtEntry entry = null;
         String uniprotid = "";
 
-        DAOObject obj = new DAOObject();
-        ProteinDAO proteinDAO = obj.getProteinDAO();
+        ProteinDAO proteinDAO = DAOObject.getProteinDAO();
 
         try
         {
