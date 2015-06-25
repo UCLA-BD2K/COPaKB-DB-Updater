@@ -133,7 +133,7 @@ public class ProteinUpdate {
         ProteinDAO proteinDAO = new DAOObject().getProteinDAO();
 
         // Attempt to add the protein
-        String result = proteinDAO.addProteinCurrent(protein);
+        String result = DAOObject.getProteinDAO().addProteinCurrent(protein);
 
         // Process result
         if (result.isEmpty() || result.equals("Failed")) {
@@ -583,7 +583,7 @@ public class ProteinUpdate {
         String species = ((Element) proteinElement.getElementsByTagName("organism").item(0))
                 .getElementsByTagName("name").item(0) // First species name should be scientific
                 .getTextContent();
-        protein.setSpecies(new DAOObject().getProteinDAO().searchSpecies(species));
+        protein.setSpecies(DAOObject.getProteinDAO().searchSpecies(species));
 
         // TODO wiki_link
 

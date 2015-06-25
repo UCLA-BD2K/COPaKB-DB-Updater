@@ -24,9 +24,8 @@ public class SpectraUpdate {
     //parameters subject to change
     public static void update(String file, int mod_id, String instr, String enzyme){
 
-        DAOObject obj = new DAOObject();
-        PeptideDAO peptideDAO = obj.getPeptideDAO();
-        ProteinDAO proteinDAO = obj.getProteinDAO();
+        PeptideDAO peptideDAO = DAOObject.getPeptideDAO();
+        ProteinDAO proteinDAO = DAOObject.getProteinDAO();
 
         LibraryModule tempLibMod = null;
         String organelle = "";
