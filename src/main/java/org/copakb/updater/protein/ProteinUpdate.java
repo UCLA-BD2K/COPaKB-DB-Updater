@@ -18,7 +18,6 @@ import uk.ac.ebi.kraken.uuw.services.remoting.*;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.*;
-import java.lang.reflect.Array;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
@@ -38,19 +37,19 @@ public class ProteinUpdate {
     }
 
     public static void main(String[] args) {
-        try {
-            updateViaXML("data/uniprot_not_added.txt");
-            //getProteinFromUniprot("P51559");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        //update("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
-        //update("./src/main/resources/test.fasta");
+//        try {
+//            updateFromIDs("data/uniprot_not_added.txt");
+//            //getProteinFromUniprot("P51559");
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+        //updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+        updateFromFasta("./src/main/resources/test.fasta");
     }
 
 
     // updates ProteinCurrent table given fasta file
-    public static void update(String file)
+    public static void updateFromFasta(String file)
     {
         Date dateBeg = new Date();
         System.out.println("BEGINNING: " + dateBeg.toString());
@@ -91,29 +90,12 @@ public class ProteinUpdate {
                         continue;
                     }
 
-                    if(proteinDAO.searchByID(uniprotid) != null) {
-                        System.out.println("Uniprot ID: " + uniprotid + " is already in the database.");
-                        continue;
-                    }
-
                     // gets the rest of the protein data
-                    ProteinCurrent protein = retrieveDataFromUniprot(entry, proteinDAO);
+                    ProteinCurrent protein = getProteinFromUniprot(uniprotid);
 
-                    String addResult = "";
-
-                    if(protein != null) {
-                        protein.setProtein_acc(uniprotid);
-                        addResult = proteinDAO.addProteinCurrent(protein);
-                    }
-                    else { // make list of all uniprot id's that were not added
-                        writer.println(uniprotid);
-                        continue;
-                    }
-
-                    if(addResult.equals("Existed")) {
-                        System.out.println("Uniprot ID: " + uniprotid + " is already in the database.");
-                    }
-                    if(addResult.equals("") || addResult.equals("Failed")) {
+                    // Add protein to database
+                    if (protein == null || !addProtein(protein)) {
+                        // make list of all uniprot id's that were not added
                         writer.println(uniprotid);
                         continue;
                     }
@@ -139,6 +121,29 @@ public class ProteinUpdate {
         System.out.println("BEGINNING: " + dateBeg.toString());
         Date dateEnd = new Date();
         System.out.println("ENDING: " + dateEnd.toString());
+    }
+
+    /**
+     * Attempts to add a protein to the database.
+     *
+     * @param protein   ProteinCurrent to add
+     * @return          Returns True if add successful or protein already exists.
+     */
+    public static Boolean addProtein(ProteinCurrent protein) {
+        ProteinDAO proteinDAO = new DAOObject().getProteinDAO();
+
+        // Attempt to add the protein
+        String result = proteinDAO.addProteinCurrent(protein);
+
+        // Process result
+        if (result.isEmpty() || result.equals("Failed")) {
+            System.out.println(protein.getProtein_acc() + " add failed.");
+            return false;
+        } else if (result.equals("Existed")) {
+            System.out.println( protein.getProtein_acc() + " already exists in database.");
+        }
+
+        return true;
     }
 
     static String ValideSQL(String sql)
@@ -410,7 +415,13 @@ public class ProteinUpdate {
 
     private static final String UNIPROT_BASE_URL = "http://www.uniprot.org/uniprot/";
 
-    public static void updateViaXML(String filename) throws Exception {
+    /**
+     * Updates ProteinCurrent table given a file of Uniprot IDs
+     *
+     * @param filename      File with UniProtIDs
+     * @throws Exception
+     */
+    public static void updateFromIDs(String filename) throws Exception {
         // Open file and iterate through UniProt IDs
         FileInputStream inputStream = new FileInputStream(filename);
         Scanner sc = new Scanner(inputStream, "UTF-8");
