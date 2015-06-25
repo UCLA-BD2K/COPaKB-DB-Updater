@@ -3,8 +3,10 @@ package org.copakb.updater.protein;
 import org.copakb.server.dao.DAOObject;
 import org.copakb.server.dao.ProteinDAO;
 import org.copakb.server.dao.model.*;
-import org.springframework.context.support.ClassPathXmlApplicationContext;
-import uk.ac.ebi.kraken.interfaces.uniprot.Gene;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
 import uk.ac.ebi.kraken.interfaces.uniprot.Keyword;
 import uk.ac.ebi.kraken.interfaces.uniprot.UniProtEntry;
 import uk.ac.ebi.kraken.interfaces.uniprot.dbx.go.Go;
@@ -12,12 +14,11 @@ import uk.ac.ebi.kraken.interfaces.uniprot.dbx.go.OntologyType;
 import uk.ac.ebi.kraken.interfaces.uniprot.features.Feature;
 import uk.ac.ebi.kraken.uuw.services.remoting.*;
 
+import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.*;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
-import java.sql.Connection;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -27,12 +28,19 @@ import java.util.regex.Pattern;
  */
 public class ProteinUpdate {
 
+    private static final int CHAR_BUFFER_SIZE = 8192;
+
     public ProteinUpdate(){
 
     }
 
     public static void main(String[] args) {
-        update("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+        try {
+            update("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        //update("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
         //update("./src/main/resources/test.fasta");
     }
 
@@ -231,7 +239,6 @@ public class ProteinUpdate {
         String goTerms = "", crossRef = "", ensembl = "";
         Set<GoTerms> protGoTerms = new HashSet<GoTerms>();
         Set<String> ensemblIds = new HashSet<String>();
-        Set<String> chromoensemblIds = new HashSet<String>();
 
         for(uk.ac.ebi.kraken.interfaces.uniprot.DatabaseCrossReference d: e.getDatabaseCrossReferences())  {
             String temp_dName = d.getDatabase().getName();
@@ -243,7 +250,7 @@ public class ProteinUpdate {
                 String goTermInfo = fullTerm.substring(15);
 
                 // create completed GoTerms object
-                org.copakb.server.dao.model.GoTerms tempGO = new org.copakb.server.dao.model.GoTerms(goAcc, goTermInfo, null);
+                GoTerms tempGO = new GoTerms(goAcc, goTermInfo, null);
                 tempGO.getProteins();
 
                 protGoTerms.add(tempGO);
@@ -255,8 +262,6 @@ public class ProteinUpdate {
             if(temp_dName.toUpperCase().contains("ENSEMBL")){
                 if(d.hasThird()) {
                     //System.out.println(d.getThird().getValue());
-                    String chromosomeEnsembl = d.getPrimaryId().getValue();
-                    chromoensemblIds.add(chromosomeEnsembl); // add to HashSet to remove duplicates
                     String tempEnsembl = d.getThird().getValue();
                     ensemblIds.add(tempEnsembl); // add to HashSet to remove duplicates
                     ensembl += d.getThird().getValue() + "\n";
@@ -271,39 +276,19 @@ public class ProteinUpdate {
         }
         result.setGoTerms(protGoTerms);
 
-        // get gene name
-        Set<org.copakb.server.dao.model.Gene> genes = new HashSet<org.copakb.server.dao.model.Gene>();
+        // Get genes (with name, id, and chromosome)
+        Set<Gene> genes = new HashSet<Gene>();
         // create gene - ensembl mapping information at the end (after duplicates are removed)
         if(ensemblIds.size() < 1) {
             System.out.println("Cannot find Ensembl ids! Aborting.");
             return null;
         }
 
-        // get chromosome location information from primary ENST key
-        // only returns one from the first location from each listing
-        String loc = "";
-        for(String id : chromoensemblIds) {
-            String tempLoc = Chromosome.getChromosome(id);
-            if(tempLoc.equals("ie6")) {
-                continue;
-            }
-            if(!loc.equals(tempLoc) && !loc.equals("")) {
-                loc = loc + ", " +tempLoc;
-            }
-            else if (!loc.equals(tempLoc)) {
-                loc = tempLoc;
-            }
-        }
-
         for(String id : ensemblIds)
         {
             try {
                 // get gene information from ensembl
-                String relatedGene = getGeneFromEnsembl(id);
-                org.copakb.server.dao.model.Gene table_gene = new org.copakb.server.dao.model.Gene();
-                table_gene.setGene_name(relatedGene);
-                table_gene.setEnsembl_id(id);
-                table_gene.setChromosome(loc);
+                Gene table_gene = getGeneFromEnsembl(id);
                 table_gene.getDiseases();
                 table_gene.getProteins();
                 table_gene.getHpas();
@@ -317,9 +302,9 @@ public class ProteinUpdate {
         }
 
         // get gene name
-        /*Set<org.copakb.server.dao.model.Gene> genes = new HashSet<org.copakb.server.dao.model.Gene>();
+        /*Set<Gene> genes = new HashSet<Gene>();
         for(Gene gene: e.getGenes()) {
-            org.copakb.server.dao.model.Gene table_gene = new org.copakb.server.dao.model.Gene();
+            Gene table_gene = new Gene();
             table_gene.setGene_name(gene.getGeneName().getValue());
             genes.add(table_gene);
             System.out.println("gene = " + gene.getGeneName().getValue());
@@ -355,58 +340,58 @@ public class ProteinUpdate {
         return result;
     }
 
+    private static final String ENSEMBL_BASE_URL = "http://rest.ensembl.org/lookup/id/";
+
     /**
-     * Code adapted from rest.ensembl.org.
-     * @param ensemblID
-     * @return
-     * @throws Exception
+     * Returns the Gene for an Ensembl ID
+     *
+     * @param ensemblID     Ensembl ID to lookup
+     * @return              Gene object with name, id, and chromosome
+     * @throws IOException
      */
-    public static String getGeneFromEnsembl(String ensemblID) throws Exception {
-        String server = "http://rest.ensembl.org";
-        String ext = "/lookup/id/" + ensemblID + "?";
-        URL url = new URL(server + ext);
+    public static Gene getGeneFromEnsembl(String ensemblID) throws IOException {
+        // Generate URL
+        URL url = new URL(ENSEMBL_BASE_URL + ensemblID);
 
+        // Open connection
         URLConnection connection = url.openConnection();
-        HttpURLConnection httpConnection = (HttpURLConnection)connection;
-
-        httpConnection.setRequestProperty("Content-Type", "application/json");
-
+        HttpURLConnection httpConnection = (HttpURLConnection) connection;
+        httpConnection.setRequestProperty("Content-Type", "text/plain; charset=utf-8");
         InputStream response = connection.getInputStream();
+
+        // Validate response
         int responseCode = httpConnection.getResponseCode();
-
-        if(responseCode != 200) {
-            throw new RuntimeException("Response code was not 200. Detected response was "+responseCode);
+        if (responseCode != 200) {
+            throw new RuntimeException("Bad response: " + responseCode);
         }
 
-        String output;
-        Reader reader = null;
-        try {
-            reader = new BufferedReader(new InputStreamReader(response, "UTF-8"));
-            StringBuilder builder = new StringBuilder();
-            char[] buffer = new char[8192];
-            int read;
-            while ((read = reader.read(buffer, 0, buffer.length)) > 0) {
-                builder.append(buffer, 0, read);
+        // Get content
+        Reader reader = new BufferedReader(new InputStreamReader(response, "UTF-8"));
+        StringBuilder sb = new StringBuilder();
+        char[] buffer = new char[CHAR_BUFFER_SIZE];
+        int read;
+        while ((read = reader.read(buffer, 0, buffer.length)) > 0) {
+            sb.append(buffer, 0, read);
+        }
+        reader.close();
+
+        // Get gene data
+        Gene gene = new Gene();
+        gene.setEnsembl_id(ensemblID);
+        String[] lines = sb.toString().split("\n");
+        for (String line : lines) {
+            if (line.startsWith("error: ")) {
+                throw new RuntimeException(line);
+            } else if (line.startsWith("display_name: ")) {
+                // Get display name
+                gene.setGene_name(line.split(" ")[1]);
+            } else if (line.startsWith("seq_region_name: ")) {
+                // Get chromosome
+                gene.setChromosome(line.split(" ")[1]);
             }
-            output = builder.toString();
-        }
-        finally {
-            if (reader != null) try {
-                reader.close();
-            } catch (IOException logOrIgnore) {
-                logOrIgnore.printStackTrace();
-            }
         }
 
-        // parse the json information to find just the "display name" which corresponds to gene symbol
-        Pattern pattern = Pattern.compile("\"display_name\":\"(.+?)\"");
-        Matcher matcher = pattern.matcher(output);
-        if(matcher.find())
-        {
-            String geneSymbol = matcher.group(0).substring(16, matcher.group(0).length()-1);
-            return geneSymbol;
-        }
-        return "";
+        return gene;
     }
 
     public static String cleanFilePath(String file) {
