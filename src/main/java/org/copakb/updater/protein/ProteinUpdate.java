@@ -7,6 +7,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
 import uk.ac.ebi.kraken.interfaces.uniprot.Keyword;
 import uk.ac.ebi.kraken.interfaces.uniprot.UniProtEntry;
 import uk.ac.ebi.kraken.interfaces.uniprot.dbx.go.Go;
@@ -15,7 +16,9 @@ import uk.ac.ebi.kraken.interfaces.uniprot.features.Feature;
 import uk.ac.ebi.kraken.uuw.services.remoting.*;
 
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import java.io.*;
+import java.lang.reflect.Array;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
@@ -36,7 +39,8 @@ public class ProteinUpdate {
 
     public static void main(String[] args) {
         try {
-            update("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+            updateViaXML("data/uniprot_not_added.txt");
+            //getProteinFromUniprot("P51559");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -402,6 +406,196 @@ public class ProteinUpdate {
         Matcher textMatcher = textPattern.matcher(file);
         result = textMatcher.replaceAll("");
         return result;
+    }
+
+    private static final String UNIPROT_BASE_URL = "http://www.uniprot.org/uniprot/";
+
+    public static void updateViaXML(String filename) throws Exception {
+        // Open file and iterate through UniProt IDs
+        FileInputStream inputStream = new FileInputStream(filename);
+        Scanner sc = new Scanner(inputStream, "UTF-8");
+        ArrayList<String> failed = new ArrayList<>();
+        System.out.println("Failed: "); // TODO Debug
+        while (sc.hasNextLine()) {
+            String uniprotID = sc.nextLine();
+            try {
+                getProteinFromUniprot(uniprotID);
+            } catch (Exception e) {
+                System.out.println(uniprotID); // TODO Debug
+            }
+        }
+
+        sc.close();
+        inputStream.close();
+    }
+
+    /**
+     * Returns the ProteinCurrent for a UniProt ID
+     *
+     * @param uniprotID
+     * @return
+     * @throws Exception
+     */
+    private static ProteinCurrent getProteinFromUniprot(String uniprotID)
+            throws IOException, ParserConfigurationException, SAXException {
+        // Generate XML URL
+        URL url = new URL(UNIPROT_BASE_URL + uniprotID + ".xml");
+
+        // Open connection
+        URLConnection connection = url.openConnection();
+        HttpURLConnection httpConnection = (HttpURLConnection) connection;
+        httpConnection.setRequestProperty("Content-Type", "application/json");
+        InputStream response = connection.getInputStream();
+
+        // Validate response
+        int responseCode = httpConnection.getResponseCode();
+        if (responseCode != 200) {
+            throw new RuntimeException("Bad response: " + responseCode);
+        }
+
+        // Get content
+        Reader reader = new BufferedReader(new InputStreamReader(response, "UTF-8"));
+        StringBuilder sb = new StringBuilder();
+        char[] buffer = new char[CHAR_BUFFER_SIZE];
+        int read;
+        while ((read = reader.read(buffer, 0, buffer.length)) > 0) {
+            sb.append(buffer, 0, read);
+        }
+        reader.close();
+
+        // Parse XML
+        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                .parse(new InputSource(new StringReader(sb.toString())));
+        doc.getDocumentElement().normalize();
+
+        // Iterate through protein entries
+        NodeList entries = doc.getElementsByTagName("entry");
+        Element proteinElement = (Element) entries.item(0);
+        ProteinCurrent protein = new ProteinCurrent();
+
+        // Get accession (UniProt ID, use first one as primary)
+        protein.setProtein_acc(proteinElement.getElementsByTagName("accession").item(0).getTextContent());
+
+        // Get sequence
+        protein.setSequence(proteinElement.getElementsByTagName("sequence").item(0).getTextContent());
+
+        // Get protein name
+        protein.setProtein_name(proteinElement.getElementsByTagName("name").item(0).getTextContent());
+
+        // Get molecular weight
+        // Potential sequence nodes when there are isoforms, target should always be the last one
+        NodeList sequences = proteinElement.getElementsByTagName("sequence");
+        protein.setMolecular_weight(Double.valueOf(
+                ((Element) sequences.item(sequences.getLength() - 1)).getAttribute("mass")));
+
+        // Handle feature data (default empty strings)
+        protein.setTransmembrane_domain("");
+        protein.setCytoplasmatic_domain("");
+        protein.setNoncytoplasmatic_domain("");
+        protein.setSignal_peptide("");
+        protein.setFeature_table("");
+
+        StringBuilder featureTable = new StringBuilder();
+        NodeList features = proteinElement.getElementsByTagName("feature");
+        for (int featureIndex = 0; featureIndex < features.getLength(); featureIndex++) {
+            Element featureElement = (Element) features.item(featureIndex);
+            Element locationElement = (Element) featureElement.getElementsByTagName("location").item(0);
+            NodeList position = locationElement.getElementsByTagName("position");
+
+            // Append new line between feature elements
+            if (featureIndex > 0) {
+                featureTable.append("\n");
+            }
+
+            // Append feature type
+            featureTable.append(featureElement.getAttribute("type") + "\t");
+
+            // Feature element location has start/end OR position
+            if (position.getLength() == 0) {
+                // Handle start/end
+                String start = ((Element) locationElement
+                        .getElementsByTagName("begin").item(0))
+                        .getAttribute("position");
+                String end = ((Element) locationElement
+                        .getElementsByTagName("end").item(0))
+                        .getAttribute("position");
+
+                // Append start/end positions
+                featureTable.append(start + "\t" + end + "\t");
+
+                // Set domain values
+                if (featureElement.getAttribute("type").equals("transmembrane region")) {
+                    protein.setTransmembrane_domain(start + " - " + end);
+                } else if (featureElement.getAttribute("type").equals("topological domain") &&
+                        featureElement.getAttribute("description").equals("Cytoplasmic")) {
+                    protein.setCytoplasmatic_domain(start + " - " + end);
+                } else if (featureElement.getAttribute("type").equals("topological domain") &&
+                        featureElement.getAttribute("description").equals("Extracellular")) {
+                    protein.setNoncytoplasmatic_domain(start + " - " + end);
+                } else if (featureElement.getAttribute("type").equals("transit peptide") &&
+                        featureElement.getAttribute("description").equals("Mitochondrion")) {
+                    protein.setNoncytoplasmatic_domain(start + " - " + end);
+                }
+            } else {
+                // Handle position
+                // Append position position
+                featureTable.append(((Element) position.item(0)).getAttribute("position") + "\t");
+            }
+
+            // Append feature description
+            featureTable.append(featureElement.getAttribute("description"));
+        }
+
+        // TODO ref_kb_id (uses dbReference)
+
+        // Get keywords
+        NodeList keywords = proteinElement.getElementsByTagName("keyword");
+        StringBuilder kw = new StringBuilder();
+        for (int keywordIndex = 0; keywordIndex < keywords.getLength(); keywordIndex++) {
+            // Append pipe separator between keywords
+            if (keywordIndex > 0) {
+                kw.append(" | ");
+            }
+
+            kw.append(keywords.item(keywordIndex).getTextContent());
+        }
+        protein.setKeywords(kw.toString());
+
+        // Get feature table string
+        protein.setFeature_table(featureTable.toString());
+
+        // Get species ID
+        // TODO Clarify single species per protein
+        String species = ((Element) proteinElement.getElementsByTagName("organism").item(0))
+                .getElementsByTagName("name").item(0) // First species name should be scientific
+                .getTextContent();
+        protein.setSpecies(new DAOObject().getProteinDAO().searchSpecies(species));
+
+        // TODO wiki_link
+
+        // Get genes
+        Set<Gene> genes = new HashSet<>();
+        NodeList dbReferences = proteinElement.getElementsByTagName("dbReference");
+        for (int dbRefIndex = 0; dbRefIndex < dbReferences.getLength(); dbRefIndex++) {
+            Element dbRefElement = (Element) dbReferences.item(dbRefIndex);
+            String dbRefType = dbRefElement.getAttribute("type");
+            // TODO Create array to check against valid gene dbReference types
+            if (dbRefType.startsWith("Ensembl") || dbRefType.startsWith("WormBase")) {
+                // TODO Check for property type = "gene ID", or verify consistency as 2nd element
+                Element property = (Element) dbRefElement.getElementsByTagName("property").item(1);
+                if (property != null) {
+                    String id = property.getAttribute("value");
+                    genes.add(getGeneFromEnsembl(id));
+                }
+            }
+        }
+        protein.setGenes(genes);
+
+        // TODO PTMs
+        // TODO GoTerms
+        // TODO Spectra
+
+        return protein;
     }
 
     /*
