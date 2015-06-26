@@ -7,6 +7,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
 import uk.ac.ebi.kraken.interfaces.uniprot.Keyword;
 import uk.ac.ebi.kraken.interfaces.uniprot.UniProtEntry;
 import uk.ac.ebi.kraken.interfaces.uniprot.dbx.go.Go;
@@ -15,6 +16,7 @@ import uk.ac.ebi.kraken.interfaces.uniprot.features.Feature;
 import uk.ac.ebi.kraken.uuw.services.remoting.*;
 
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -35,18 +37,14 @@ public class ProteinUpdate {
     }
 
     public static void main(String[] args) {
-        try {
-            update("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        //update("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
-        //update("./src/main/resources/test.fasta");
+//        updateFromIDs("data/uniprot_not_added.txt");
+//        updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+        updateFromFasta("./src/main/resources/test.fasta");
     }
 
 
     // updates ProteinCurrent table given fasta file
-    public static void update(String file)
+    public static void updateFromFasta(String file)
     {
         Date dateBeg = new Date();
         System.out.println("BEGINNING: " + dateBeg.toString());
@@ -56,8 +54,6 @@ public class ProteinUpdate {
         EntryRetrievalService entryRetrievalService = UniProtJAPI.factory.getEntryRetrievalService();
         UniProtEntry entry = null;
         String uniprotid = "";
-
-        ProteinDAO proteinDAO = DAOObject.getProteinDAO();
 
         try
         {
@@ -70,7 +66,6 @@ public class ProteinUpdate {
                 {
                     uniprotid = uniprotheader.substring(4,uniprotheader.indexOf("|",4) ) ;
                     try{
-                        // fails if it is not the primary uniprotid
                         entry = (UniProtEntry)entryRetrievalService.getUniProtEntry(uniprotid);
                         System.out.println("\n*************************");
                         System.out.println("Able to retrieve "+uniprotid+" from UniProt");
@@ -87,29 +82,17 @@ public class ProteinUpdate {
                         continue;
                     }
 
-                    if(proteinDAO.searchByID(uniprotid) != null) {
+                    if(DAOObject.getProteinDAO().searchByID(uniprotid) != null) {
                         System.out.println("Uniprot ID: " + uniprotid + " is already in the database.");
                         continue;
                     }
 
                     // gets the rest of the protein data
-                    ProteinCurrent protein = retrieveDataFromUniprot(entry, proteinDAO);
+                    ProteinCurrent protein = getProteinFromUniprot(uniprotid);
 
-                    String addResult = "";
-
-                    if(protein != null) {
-                        protein.setProtein_acc(uniprotid);
-                        addResult = proteinDAO.addProteinCurrent(protein);
-                    }
-                    else { // make list of all uniprot id's that were not added
-                        writer.println(uniprotid);
-                        continue;
-                    }
-
-                    if(addResult.equals("Existed")) {
-                        System.out.println("Uniprot ID: " + uniprotid + " is already in the database.");
-                    }
-                    if(addResult.equals("") || addResult.equals("Failed")) {
+                    // Add protein to database
+                    if (protein == null || !addProtein(protein)) {
+                        // make list of all uniprot id's that were not added
                         writer.println(uniprotid);
                         continue;
                     }
@@ -135,6 +118,27 @@ public class ProteinUpdate {
         System.out.println("BEGINNING: " + dateBeg.toString());
         Date dateEnd = new Date();
         System.out.println("ENDING: " + dateEnd.toString());
+    }
+
+    /**
+     * Attempts to add a protein to the database.
+     *
+     * @param protein   ProteinCurrent to add
+     * @return          Returns True if add successful or protein already exists.
+     */
+    public static Boolean addProtein(ProteinCurrent protein) {
+        // Attempt to add the protein
+        String result = DAOObject.getProteinDAO().addProteinCurrent(protein);
+
+        // Process result
+        if (result.isEmpty() || result.equals("Failed")) {
+            System.out.println(protein.getProtein_acc() + " add failed.");
+            return false;
+        } else if (result.equals("Existed")) {
+            System.out.println( protein.getProtein_acc() + " already exists in database.");
+        }
+
+        return true;
     }
 
     static String ValideSQL(String sql)
@@ -163,12 +167,6 @@ public class ProteinUpdate {
         return ValideSQL(result);
     }
 
-    /**
-     *
-     * @param e
-     * @param proteinDAO
-     * @return
-     */
     public static ProteinCurrent retrieveDataFromUniprot(UniProtEntry e, ProteinDAO proteinDAO){
 
         // initialize
@@ -273,16 +271,14 @@ public class ProteinUpdate {
                     ensembl += d.getThird().getValue() + "\n";
                 }
             }
-            //crossRef += d+"\n";
+            crossRef += d+"\n";
         }
 
-        /*if(protGoTerms.size() < 1) {
+        if(protGoTerms.size() < 1) {
             System.out.println("Cannot find GO Terms! Aborting.");
             return null;
-        }*/
-        if(protGoTerms.size() >=  1) {
-            result.setGoTerms(protGoTerms);
         }
+        result.setGoTerms(protGoTerms);
 
         // Get genes (with name, id, and chromosome)
         Set<Gene> genes = new HashSet<Gene>();
@@ -410,6 +406,226 @@ public class ProteinUpdate {
         Matcher textMatcher = textPattern.matcher(file);
         result = textMatcher.replaceAll("");
         return result;
+    }
+
+    private static final String UNIPROT_BASE_URL = "http://www.uniprot.org/uniprot/";
+
+    /**
+     * Updates ProteinCurrent table given a file of Uniprot IDs
+     *
+     * @param filename      File with UniProtIDs
+     * @throws Exception
+     */
+    public static void updateFromIDs(String filename) {
+        // Open file and iterate through UniProt IDs
+        FileInputStream inputStream = null;
+
+        try {
+            inputStream = new FileInputStream(filename);
+            Scanner sc = new Scanner(inputStream, "UTF-8");
+            ArrayList<String> failed = new ArrayList<String>();
+            while (sc.hasNextLine()) {
+                String uniprotID = sc.nextLine();
+
+                if(DAOObject.getProteinDAO().searchByID(uniprotID) != null) {
+                    System.out.println("Uniprot ID: " + uniprotID + " is already in the database.");
+                    continue;
+                }
+
+                try {
+                    if (addProtein(getProteinFromUniprot(uniprotID))) {
+                        System.out.println(uniprotID + " SUCCESS"); // TODO Debug
+                    }
+                } catch (Exception e) {
+                    failed.add(uniprotID);
+                    System.out.println(uniprotID + " FAILED"); // TODO Debug
+                }
+            }
+
+            System.out.println("Failed: " + failed); // TODO Debug
+            sc.close();
+            inputStream.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Returns the ProteinCurrent for a UniProt ID
+     *
+     * @param uniprotID
+     * @return
+     * @throws Exception
+     */
+    private static ProteinCurrent getProteinFromUniprot(String uniprotID)
+            throws IOException, ParserConfigurationException, SAXException {
+        // Generate XML URL
+        URL url = new URL(UNIPROT_BASE_URL + uniprotID + ".xml");
+
+        // Open connection
+        URLConnection connection = url.openConnection();
+        HttpURLConnection httpConnection = (HttpURLConnection) connection;
+        httpConnection.setRequestProperty("Content-Type", "application/json");
+        InputStream response = connection.getInputStream();
+
+        // Validate response
+        int responseCode = httpConnection.getResponseCode();
+        if (responseCode != 200) {
+            throw new RuntimeException("Bad response: " + responseCode);
+        }
+
+        // Get content
+        Reader reader = new BufferedReader(new InputStreamReader(response, "UTF-8"));
+        StringBuilder sb = new StringBuilder();
+        char[] buffer = new char[CHAR_BUFFER_SIZE];
+        int read;
+        while ((read = reader.read(buffer, 0, buffer.length)) > 0) {
+            sb.append(buffer, 0, read);
+        }
+        reader.close();
+
+        // Parse XML
+        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                .parse(new InputSource(new StringReader(sb.toString())));
+        doc.getDocumentElement().normalize();
+
+        // Iterate through protein entries
+        NodeList entries = doc.getElementsByTagName("entry");
+        Element proteinElement = (Element) entries.item(0);
+        ProteinCurrent protein = new ProteinCurrent();
+
+        // Get accession (UniProt ID, use first one as primary)
+        protein.setProtein_acc(proteinElement.getElementsByTagName("accession").item(0).getTextContent());
+
+        // Get sequence
+        protein.setSequence(proteinElement.getElementsByTagName("sequence").item(0).getTextContent());
+
+        // Get protein name
+        protein.setProtein_name(proteinElement.getElementsByTagName("name").item(0).getTextContent());
+
+        // Get molecular weight
+        // Potential sequence nodes when there are isoforms, target should always be the last one
+        NodeList sequences = proteinElement.getElementsByTagName("sequence");
+        protein.setMolecular_weight(Double.valueOf(
+                ((Element) sequences.item(sequences.getLength() - 1)).getAttribute("mass")));
+
+        // Handle feature data (default empty strings)
+        protein.setTransmembrane_domain("");
+        protein.setCytoplasmatic_domain("");
+        protein.setNoncytoplasmatic_domain("");
+        protein.setSignal_peptide("");
+        protein.setFeature_table("");
+
+        StringBuilder featureTable = new StringBuilder();
+        NodeList features = proteinElement.getElementsByTagName("feature");
+        for (int featureIndex = 0; featureIndex < features.getLength(); featureIndex++) {
+            Element featureElement = (Element) features.item(featureIndex);
+            Element locationElement = (Element) featureElement.getElementsByTagName("location").item(0);
+            NodeList position = locationElement.getElementsByTagName("position");
+
+            // Append new line between feature elements
+            if (featureIndex > 0) {
+                featureTable.append("\n");
+            }
+
+            // Append feature type
+            featureTable.append(featureElement.getAttribute("type") + "\t");
+
+            // Feature element location has start/end OR position
+            if (position.getLength() == 0) {
+                // Handle start/end
+                String start = ((Element) locationElement
+                        .getElementsByTagName("begin").item(0))
+                        .getAttribute("position");
+                String end = ((Element) locationElement
+                        .getElementsByTagName("end").item(0))
+                        .getAttribute("position");
+
+                // Append start/end positions
+                featureTable.append(start + "\t" + end + "\t");
+
+                // Set domain values
+                if (featureElement.getAttribute("type").equals("transmembrane region")) {
+                    protein.setTransmembrane_domain(start + " - " + end);
+                } else if (featureElement.getAttribute("type").equals("topological domain") &&
+                        featureElement.getAttribute("description").equals("Cytoplasmic")) {
+                    protein.setCytoplasmatic_domain(start + " - " + end);
+                } else if (featureElement.getAttribute("type").equals("topological domain") &&
+                        featureElement.getAttribute("description").equals("Extracellular")) {
+                    protein.setNoncytoplasmatic_domain(start + " - " + end);
+                } else if (featureElement.getAttribute("type").equals("transit peptide") &&
+                        featureElement.getAttribute("description").equals("Mitochondrion")) {
+                    protein.setNoncytoplasmatic_domain(start + " - " + end);
+                }
+            } else {
+                // Handle position
+                // Append position position
+                featureTable.append(((Element) position.item(0)).getAttribute("position") + "\t");
+            }
+
+            // Append feature description
+            featureTable.append(featureElement.getAttribute("description"));
+        }
+
+        // TODO ref_kb_id (uses dbReference)
+
+        // Get keywords
+        NodeList keywords = proteinElement.getElementsByTagName("keyword");
+        StringBuilder kw = new StringBuilder();
+        for (int keywordIndex = 0; keywordIndex < keywords.getLength(); keywordIndex++) {
+            // Append pipe separator between keywords
+            if (keywordIndex > 0) {
+                kw.append(" | ");
+            }
+
+            kw.append(keywords.item(keywordIndex).getTextContent());
+        }
+        protein.setKeywords(kw.toString());
+
+        // Get feature table string
+        protein.setFeature_table(featureTable.toString());
+
+        // Get species ID
+        // TODO Clarify single species per protein
+        // Check scientific name first
+        String species = ((Element) proteinElement.getElementsByTagName("organism").item(0))
+                .getElementsByTagName("name").item(0) // First species name should be scientific
+                .getTextContent();
+        // Check common name
+        Species speciesID = DAOObject.getProteinDAO().searchSpecies(species);
+        if (DAOObject.getProteinDAO().searchSpecies(species) == null) {
+            species = ((Element) proteinElement.getElementsByTagName("organism").item(0))
+                    .getElementsByTagName("name").item(1) // Second species name should be common
+                    .getTextContent();
+        }
+        speciesID = DAOObject.getProteinDAO().searchSpecies(species);
+        protein.setSpecies(speciesID);
+
+        // TODO wiki_link
+
+        // Get genes (only take the first gene)
+        Set<Gene> genes = new HashSet<Gene>();
+        NodeList dbReferences = proteinElement.getElementsByTagName("dbReference");
+        for (int dbRefIndex = 0; dbRefIndex < 1; dbRefIndex++) {
+            Element dbRefElement = (Element) dbReferences.item(dbRefIndex);
+            String dbRefType = dbRefElement.getAttribute("type");
+            // TODO Create array to check against valid gene dbReference types
+            if (dbRefType.startsWith("Ensembl") || dbRefType.startsWith("WormBase")) {
+                // TODO Check for property type = "gene ID", or verify consistency as 2nd element
+                Element property = (Element) dbRefElement.getElementsByTagName("property").item(1);
+                if (property != null) {
+                    String id = property.getAttribute("value");
+                    genes.add(getGeneFromEnsembl(id));
+                }
+            }
+        }
+        protein.setGenes(genes);
+
+        // TODO PTMs
+        // TODO GoTerms
+        // TODO Spectra
+
+        return protein;
     }
 
     /*
