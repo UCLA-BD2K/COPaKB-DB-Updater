@@ -24,6 +24,8 @@ public class SpectraUpdate {
     //parameters subject to change
     public static void update(String file, int mod_id, String instr, String enzyme){
 
+        Date dateBeg = new Date();
+
         PeptideDAO peptideDAO = DAOObject.getPeptideDAO();
         ProteinDAO proteinDAO = DAOObject.getProteinDAO();
 
@@ -69,6 +71,8 @@ public class SpectraUpdate {
 
             Date date = new Date();
 
+            // add library module according to file name
+            // assumes format as [organism]_[organ]_[organelle](_[date]).copa
             LibraryModule checkMod = peptideDAO.searchLibraryModuleWithModule(shortName);
             if(checkMod != null) {
                 tempLibMod = checkMod;
@@ -80,19 +84,29 @@ public class SpectraUpdate {
             mod_id = peptideDAO.addLibraryModule(tempLibMod);
         }
 
+        BufferedWriter writer = null;
+
         CopaParser cp = new CopaParser(file);
         HashMap copaEntry = null;
         while(cp.processEntry()>0) {
 //            for(Object s : cp.getCurrentEntry().values())
 //                System.out.println(s.toString());
             copaEntry = cp.getCurrentEntry();
-            populateSpectraObject(copaEntry, mod_id, peptideDAO, proteinDAO);
+            populateSpectraObject(copaEntry, mod_id, peptideDAO, proteinDAO, writer);
         }
         cp.closeBuffer();
 
+        System.out.println("\n\n");
+        System.out.println("BEGINNING: " + dateBeg.toString());
+        Date dateEnd = new Date();
+        System.out.println("ENDING: " + dateEnd.toString());
+
     }
 
-    private static void populateSpectraObject(HashMap entry, int mod_id, PeptideDAO peptideDAO, ProteinDAO proteinDAO){
+    private static void populateSpectraObject(HashMap entry, int mod_id, PeptideDAO peptideDAO, ProteinDAO proteinDAO, BufferedWriter writer){
+
+        System.out.println("\n\n********************");
+        System.out.println("PEPID: " + (String)entry.get("PEPID"));
 
         String whole_sequence = (String)entry.get("SEQ");
         String ptm_sequence = whole_sequence.substring(2, whole_sequence.length() - 2);
@@ -149,7 +163,19 @@ public class SpectraUpdate {
             }
 
             spectrum.setPeptide(tempPep);
-            peptideDAO.addSpectrum(spectrum);
+            int specNum = peptideDAO.addSpectrum(spectrum);
+            // create and save spectrum files; currently hardcoded the location
+            String fileName = "C:/Users/Ping PC1/Spectra_Files/" + specNum + ".txt";
+            try {
+                writer = new BufferedWriter(new FileWriter(new File(fileName)));
+                writer.write((String) entry.get("header"));
+                writer.write((String) entry.get("spectrum"));
+                writer.close();
+            }
+            catch (Exception e)
+            {
+                e.printStackTrace();
+            }
 
             // Spectrum Protein
             EntryRetrievalService entryRetrievalService = UniProtJAPI.factory.getEntryRetrievalService();
@@ -160,35 +186,40 @@ public class SpectraUpdate {
             sp.setNextAA(whole_sequence.charAt(whole_sequence.length() - 1));
             String proteins = (String)entry.get("UNIPROTIDS");
 
-            ProteinCurrent prot;
-            String protSeq;
+            ProteinCurrent prot = null;
+            String protSeq = null;
             int loc;
 
             String[] tokens = proteins.split(";");
             for (String token : tokens) {
+                System.out.println("Token " + token);
                 prot = proteinDAO.searchByID(token);
                 if(prot == null) {
                     try { // use uniprot.org to find protein sequence if not in database
                         uniProtEntry = (UniProtEntry) entryRetrievalService.getUniProtEntry(token);
-                        protSeq = uniProtEntry.getSequence().getValue();
-                        prot = ProteinUpdate.retrieveDataFromUniprot(uniProtEntry, proteinDAO);
-                        if(prot != null) {
-                            prot.setProtein_acc(token);
-                            // works if not automatically added to the database. does it need to?
-                            //proteinDAO.addProteinCurrent(prot);
+                        if(uniProtEntry == null) {
+                            System.out.println("Uniprot Entry does not exist!");
+                            continue;
                         }
+                        protSeq = uniProtEntry.getSequence().getValue();
+
                     }
                     catch (Exception e) {
-                        e.printStackTrace();
+                        System.out.println("Uniprot did not retrieve " + token + "\t" + e.toString() + e.getMessage());
                         continue;
                     }
                 }
                 else {
                     protSeq = prot.getSequence();
                 }
-                loc = protSeq.indexOf(ptm_sequence);
 
+                String tempPtmSeq = ptm_sequence.replaceAll("[^A-Za-z]", "");
+                loc = protSeq.indexOf(tempPtmSeq);
+
+                prot  = new ProteinCurrent();
+                prot.setProtein_acc(token);
                 sp.setProtein_acc(prot.getProtein_acc());
+
                 sp.setLocation(loc);
                 sp.setLibraryModule(tempLibMod);
                 sp.setFeature_peptide(true);
@@ -415,6 +446,6 @@ public class SpectraUpdate {
             System.out.println(token);
         }*/
 
-        update("./src/main/resources/mouse_heart_test_mitochondria.copa", -1, "LTQ", "Trypsin");
+        update("./src/main/resources/human_heart_proteasome.copa", -1, "LTQ", "Trypsin");
     }
 }

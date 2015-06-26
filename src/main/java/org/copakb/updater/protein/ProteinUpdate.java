@@ -38,8 +38,8 @@ public class ProteinUpdate {
 
     public static void main(String[] args) {
 //        updateFromIDs("data/uniprot_not_added.txt");
-//        updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
-        updateFromFasta("./src/main/resources/test.fasta");
+        updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+//        updateFromFasta("./src/main/resources/test.fasta");
     }
 
 
@@ -274,11 +274,14 @@ public class ProteinUpdate {
             crossRef += d+"\n";
         }
 
-        if(protGoTerms.size() < 1) {
+        /*if(protGoTerms.size() < 1) {
             System.out.println("Cannot find GO Terms! Aborting.");
             return null;
+        }*/
+        if(protGoTerms.size() >=  1) {
+             result.setGoTerms(protGoTerms);
         }
-        result.setGoTerms(protGoTerms);
+        //result.setGoTerms(protGoTerms);
 
         // Get genes (with name, id, and chromosome)
         Set<Gene> genes = new HashSet<Gene>();
