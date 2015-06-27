@@ -10,6 +10,7 @@ import uk.ac.ebi.kraken.uuw.services.remoting.EntryRetrievalService;
 import uk.ac.ebi.kraken.uuw.services.remoting.UniProtJAPI;
 
 import java.io.*;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -135,24 +136,11 @@ public class SpectraUpdate {
             spectrum.setTh_precursor_mz(arr[1]);
             peptide.setMolecular_weight(arr[0]);
 
-            //todo: store spectrum in file; use storeSpectraInFile function
-            //todo: calculate ptm
-                //uses info below; ask howard on how ptm is calculated
-                //will also need to populate ptm_type table
-//            1	Carbamidomethylation	C,K,H	57.02000
-//            2	Acetylation	K,N-term	42.01000
-//            4	Oxidation	M	15.99000
-//            8	Phosphorylation	S,T	79.97000
-//            16	Succinylation	K	100.01860
-//            32	Propionamide	C	71.03712
-//            64	Pyro-carbamidomethyl	C	39.99492
-//            128	Pyro-glu	E	-17.03000
-            PTM_type tempType = peptideDAO.searchPtmType(1);
+            PTM_type tempType = peptideDAO.searchPtmType(parsePtmSequence(ptm_sequence));
             spectrum.setPtm(tempType);
 
             LibraryModule tempLibMod = peptideDAO.searchLibraryModuleWithId(mod_id);
             spectrum.setModule(tempLibMod);
-
 
             // temp values
             Peptide tempPep = peptideDAO.searchBySequence(ptm_sequence);
@@ -439,6 +427,159 @@ public class SpectraUpdate {
         return result;
     }
 
+//            1	Carbamidomethylation	C,K,H	57.02000
+//            2	Acetylation	K,N-term	42.01000
+//            4	Oxidation	M	15.99000
+//            8	Phosphorylation	S,T	79.97000
+//            16	Succinylation	K	100.01860
+//            32	Propionamide	C	71.03712
+//            64	Pyro-carbamidomethyl	C	39.99492
+//            128	Pyro-glu	E	-17.03000
+
+    public static int parsePtmSequence(String ptm_sequence) {
+        int result = 0;
+        double range = 0.01;
+
+        String tempPtmType = "";
+        for(char aa : ptm_sequence.toCharArray()) {
+            if(Character.isLetter(aa)) {
+                continue;
+            }
+
+            if(aa == '(') {
+                tempPtmType = "";
+            }
+
+            // at end of sequence, check the ptm type based on the value and add to total type number
+            if(aa == ')' && tempPtmType.length() > 1) {
+                double ptmVal = Double.parseDouble(tempPtmType);
+                System.out.println(ptmVal);
+                if(withinRange(ptmVal, 57.020000, range)) { // Carbamidomethylation
+                    result += 1;
+                }
+                else if(withinRange(ptmVal, 42.01000, range)) { // Acetylation
+                    result += 2;
+                }
+                else if(withinRange(ptmVal, 15.99000, range)) { // Oxidation
+                    result += 4;
+                }
+                else if(withinRange(ptmVal, 79.97000, range)) { // Phosphorylation
+                    result += 8;
+                }
+                else if(withinRange(ptmVal, 100.01860, range)) { // Succinylation
+                    result += 16;
+                }
+                else if(withinRange(ptmVal, 71.03712, range)) { // Propionamide
+                    result += 32;
+                }
+                else if(withinRange(ptmVal, 39.99492, range)) { // Pyro-carbamidomethyl
+                    result += 64;
+                }
+                else if(withinRange(ptmVal, -17.03000, range)) { // Pyro-glu
+                    result += 128;
+                }
+                else {
+                    continue;
+                }
+            }
+
+            // add ptm number together
+            if(Character.isDigit(aa) || aa == '.') {
+                tempPtmType += aa;
+            }
+        }
+
+        //System.out.println(result);
+        return result;
+    }
+
+    public static boolean withinRange(double num, double refNum, double range) {
+        if((num <= (refNum+range)) && (num >= (refNum-range)))
+            return true;
+        return false;
+    }
+
+    /**
+     * temporary method for adding ptm types
+     */
+    public static void addPtm_Types() {
+//            1	Carbamidomethylation	C,K,H	57.02000
+//            2	Acetylation	K,N-term	42.01000
+//            4	Oxidation	M	15.99000
+//            8	Phosphorylation	S,T	79.97000
+//            16	Succinylation	K	100.01860
+//            32	Propionamide	C	71.03712
+//            64	Pyro-carbamidomethyl	C	39.99492
+//            128	Pyro-glu	E	-17.03000
+
+        PeptideDAO peptideDAO = DAOObject.getPeptideDAO();
+        HashMap<Integer, Double> map = new HashMap<Integer, Double>(8);
+        map.put(1, 57.02000);
+        map.put(2, 42.01000);
+        map.put(4, 15.99000);
+        map.put(8, 79.97000);
+        map.put(16, 100.01860);
+        map.put(32, 71.03712);
+        map.put(64, 39.99492);
+        map.put(128, -17.03000);
+
+        HashMap<Integer, String> map2 = new HashMap<Integer, String>(8);
+        map2.put(1, "Carbamidomethylation;");
+        map2.put(2, "Acetylation;");
+        map2.put(4, "Oxidation;");
+        map2.put(8, "Phosphorylation;");
+        map2.put(16, "Succinylation;");
+        map2.put(32, "Propionamide;");
+        map2.put(64, "Pyro-carbamidomethyl;");
+        map2.put(128, "Pyro-glu;");
+
+        HashMap<Integer, String> map3 = new HashMap<Integer, String>(8);
+        map3.put(1, "C,K,H;");
+        map3.put(2, "K,N-term;");
+        map3.put(4, "M;");
+        map3.put(8, "S,T;");
+        map3.put(16, "K;");
+        map3.put(32, "C;");
+        map3.put(64, "C;");
+        map3.put(128, "E;");
+
+        String binary = "";
+        PTM_type tempPtmType = null;
+        String mod = "";
+        String res = "";
+        double mass = 0.0;
+        int counter = 0;
+        int key = 0;
+        for(int i = 1; i <= 255; i++) {
+            mod = "";
+            res = "";
+            mass = 0.0;
+            counter = 0;
+            key = 0;
+
+            binary = Integer.toString(i,2);
+            System.out.println(binary);
+            char[] arr = binary.toCharArray();
+            for(int x = arr.length-1; x >= 0; x--) {
+                char a = arr[x];
+                if(a == '1') {
+                    key = (int) Math.pow(2, counter);
+                    System.out.println(key);
+                    mod += map2.get(key);
+                    res += map3.get(key);
+                    mass += map.get(key);
+                }
+                counter++;
+            }
+            mod = mod.substring(0, mod.length()-1);
+            res = res.substring(0, res.length()-1);
+
+            tempPtmType = new PTM_type(i, mod, res, mass, null);
+            peptideDAO.addPtmType(tempPtmType);
+        }
+
+    }
+
     public static void main(String[] args) {
         /*String s = "p1;";
         String[] tokens = s.split(";");
@@ -446,6 +587,10 @@ public class SpectraUpdate {
             System.out.println(token);
         }*/
 
-        update("./src/main/resources/human_heart_proteasome.copa", -1, "LTQ", "Trypsin");
+        //update("./src/main/resources/human_heart_proteasome.copa", -1, "LTQ", "Trypsin");
+
+        //parsePtmSequence("(42.0106)VNKVIEINPYLLGTM(15.9949)SGCAADCQYWER");
+
+        addPtm_Types();
     }
 }
