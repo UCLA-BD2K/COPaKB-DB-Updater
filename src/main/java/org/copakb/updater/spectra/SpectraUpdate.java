@@ -22,6 +22,9 @@ import java.util.regex.Pattern;
  */
 public class SpectraUpdate {
 
+    private static int specNumCounter = 0;
+    private static int reverseCounter = 0;
+
     //parameters subject to change
     public static void update(String file, int mod_id, String instr, String enzyme){
 
@@ -114,6 +117,12 @@ public class SpectraUpdate {
 
         ArrayList<String> variations = getVariations(ptm_sequence);
         for(String s: variations) {
+            specNumCounter++;
+
+            if(!((String) entry.get("REVERSE")).equals("NotReverseHit")) {
+                reverseCounter++;
+                continue; // skip, don't add this peptide if reverse
+            }
 
             // populate peptide object
             Peptide peptide = new Peptide();
@@ -131,6 +140,8 @@ public class SpectraUpdate {
             spectrum.setZscore(Double.parseDouble((String) entry.get("ZSCORE")));
             spectrum.setPrecursor_mz(Double.parseDouble((String) entry.get("MZ")));
             spectrum.setRawfile_id((String) entry.get("SPECTRUMFILE"));
+            double fdr = ((double)reverseCounter)/((double)specNumCounter);
+            spectrum.setFdr(fdr);
 
             double[] arr = calcMWandPrecursor(ptm_sequence, charge);
             spectrum.setTh_precursor_mz(arr[1]);
@@ -152,11 +163,12 @@ public class SpectraUpdate {
 
             spectrum.setPeptide(tempPep);
             int specNum = peptideDAO.addSpectrum(spectrum);
+
             // create and save spectrum files; currently hardcoded the location
             String fileName = "C:/Users/Ping PC1/Spectra_Files/" + specNum + ".txt";
             try {
                 writer = new BufferedWriter(new FileWriter(new File(fileName)));
-                writer.write((String) entry.get("header"));
+                writer.write((String) entry.get("header") + "\n");
                 writer.write((String) entry.get("spectrum"));
                 writer.close();
             }
@@ -222,6 +234,10 @@ public class SpectraUpdate {
 
         }
         //todo: for later (after all modules are inserted)...calculate unique_peptide, feature_peptide, and fdr
+    }
+
+    private void updateUniqueAndFeatureStates() {
+
     }
 
     private static ArrayList<String> getVariations(String sequence){
