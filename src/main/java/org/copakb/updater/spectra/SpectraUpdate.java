@@ -27,8 +27,8 @@ public class SpectraUpdate {
 
         Date dateBeg = new Date();
 
-        PeptideDAO peptideDAO = DAOObject.getPeptideDAO();
-        ProteinDAO proteinDAO = DAOObject.getProteinDAO();
+        PeptideDAO peptideDAO = DAOObject.getInstance().getPeptideDAO();
+        ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
 
         LibraryModule tempLibMod = null;
         String organelle = "";
@@ -130,7 +130,7 @@ public class SpectraUpdate {
             spectrum.setDelta_cn(Double.parseDouble((String) entry.get("DELTACN")));
             spectrum.setZscore(Double.parseDouble((String) entry.get("ZSCORE")));
             spectrum.setPrecursor_mz(Double.parseDouble((String) entry.get("MZ")));
-            spectrum.setRawfile_id((String)entry.get("SPECTRUMFILE"));
+            spectrum.setRawfile_id((String) entry.get("SPECTRUMFILE"));
 
             double[] arr = calcMWandPrecursor(ptm_sequence, charge);
             spectrum.setTh_precursor_mz(arr[1]);
@@ -440,6 +440,8 @@ public class SpectraUpdate {
         int result = 0;
         double range = 0.01;
 
+        boolean carb = false, acet = false, oxid = false, phos = false, succ = false, prop = false, pyroc = false, pyrog = false;
+
         String tempPtmType = "";
         for(char aa : ptm_sequence.toCharArray()) {
             if(Character.isLetter(aa)) {
@@ -455,28 +457,44 @@ public class SpectraUpdate {
                 double ptmVal = Double.parseDouble(tempPtmType);
                 System.out.println(ptmVal);
                 if(withinRange(ptmVal, 57.020000, range)) { // Carbamidomethylation
-                    result += 1;
+                    if(!carb)
+                        result += 1;
+                    carb = true;
                 }
                 else if(withinRange(ptmVal, 42.01000, range)) { // Acetylation
-                    result += 2;
+                    if(!acet)
+                        result += 2;
+                    acet = true;
                 }
                 else if(withinRange(ptmVal, 15.99000, range)) { // Oxidation
-                    result += 4;
+                    if(!oxid)
+                        result += 4;
+                    oxid = true;
                 }
                 else if(withinRange(ptmVal, 79.97000, range)) { // Phosphorylation
-                    result += 8;
+                    if(!phos)
+                        result += 8;
+                    phos = true;
                 }
                 else if(withinRange(ptmVal, 100.01860, range)) { // Succinylation
-                    result += 16;
+                    if(!succ)
+                        result += 16;
+                    succ = true;
                 }
                 else if(withinRange(ptmVal, 71.03712, range)) { // Propionamide
-                    result += 32;
+                    if(!prop)
+                        result += 32;
+                    prop = true;
                 }
                 else if(withinRange(ptmVal, 39.99492, range)) { // Pyro-carbamidomethyl
-                    result += 64;
+                    if(!pyroc)
+                        result += 64;
+                    pyroc = true;
                 }
                 else if(withinRange(ptmVal, -17.03000, range)) { // Pyro-glu
-                    result += 128;
+                    if(!pyrog)
+                        result += 128;
+                    pyrog = true;
                 }
                 else {
                     continue;
@@ -512,7 +530,7 @@ public class SpectraUpdate {
 //            64	Pyro-carbamidomethyl	C	39.99492
 //            128	Pyro-glu	E	-17.03000
 
-        PeptideDAO peptideDAO = DAOObject.getPeptideDAO();
+        PeptideDAO peptideDAO = DAOObject.getInstance().getPeptideDAO();
         HashMap<Integer, Double> map = new HashMap<Integer, Double>(8);
         map.put(1, 57.02000);
         map.put(2, 42.01000);
@@ -577,7 +595,6 @@ public class SpectraUpdate {
             tempPtmType = new PTM_type(i, mod, res, mass, null);
             peptideDAO.addPtmType(tempPtmType);
         }
-
     }
 
     public static void main(String[] args) {
@@ -587,10 +604,10 @@ public class SpectraUpdate {
             System.out.println(token);
         }*/
 
-        //update("./src/main/resources/human_heart_proteasome.copa", -1, "LTQ", "Trypsin");
+        update("./src/main/resources/mouse_heart_nuclei.copa", -1, "LTQ", "Trypsin");
 
         //parsePtmSequence("(42.0106)VNKVIEINPYLLGTM(15.9949)SGCAADCQYWER");
 
-        addPtm_Types();
+        //addPtm_Types();
     }
 }

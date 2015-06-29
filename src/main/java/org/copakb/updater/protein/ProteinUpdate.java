@@ -38,7 +38,7 @@ public class ProteinUpdate {
 
     public static void main(String[] args) {
 //        updateFromIDs("data/uniprot_not_added.txt");
-        updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+          //updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
 //        updateFromFasta("./src/main/resources/test.fasta");
     }
 
@@ -430,7 +430,7 @@ public class ProteinUpdate {
             while (sc.hasNextLine()) {
                 String uniprotID = sc.nextLine();
 
-                if(DAOObject.getProteinDAO().searchByID(uniprotID) != null) {
+                if(DAOObject.getInstance().getProteinDAO().searchByID(uniprotID) != null) {
                     System.out.println("Uniprot ID: " + uniprotID + " is already in the database.");
                     continue;
                 }
@@ -595,13 +595,13 @@ public class ProteinUpdate {
                 .getElementsByTagName("name").item(0) // First species name should be scientific
                 .getTextContent();
         // Check common name
-        Species speciesID = DAOObject.getProteinDAO().searchSpecies(species);
-        if (DAOObject.getProteinDAO().searchSpecies(species) == null) {
+        Species speciesID = DAOObject.getInstance().getProteinDAO().searchSpecies(species);
+        if (DAOObject.getInstance().getProteinDAO().searchSpecies(species) == null) {
             species = ((Element) proteinElement.getElementsByTagName("organism").item(0))
                     .getElementsByTagName("name").item(1) // Second species name should be common
                     .getTextContent();
         }
-        speciesID = DAOObject.getProteinDAO().searchSpecies(species);
+        speciesID = DAOObject.getInstance().getProteinDAO().searchSpecies(species);
         protein.setSpecies(speciesID);
 
         // TODO wiki_link
