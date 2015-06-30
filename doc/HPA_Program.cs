@@ -102,7 +102,9 @@ namespace HPA_Program
             return 1;
 
         }
+		// Update HPA (ensg_id, subcellularLocation img and FIRST main location and FIRST antibody name)
 
+		// Update HPA (ensg_id, antibodies w/ heart tissue data)
         static public int update2(string filename, Hashtable hashtable)
         {
             // set up xml reader
