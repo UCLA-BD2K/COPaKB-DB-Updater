@@ -38,10 +38,9 @@ public class ProteinUpdate {
 
     public static void main(String[] args) {
 //        updateFromIDs("data/uniprot_not_added.txt");
-          //updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
-//        updateFromFasta("./src/main/resources/test.fasta");
+//        updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+        updateFromFasta("./src/main/resources/test.fasta");
     }
-
 
     // updates ProteinCurrent table given fasta file
     public static void updateFromFasta(String file)
@@ -138,6 +137,7 @@ public class ProteinUpdate {
             System.out.println( protein.getProtein_acc() + " already exists in database.");
         }
 
+        DAOObject.getInstance().getProteinDAO().addDbRef(protein.getDbRef());
         return true;
     }
 
@@ -572,7 +572,36 @@ public class ProteinUpdate {
             featureTable.append(featureElement.getAttribute("description"));
         }
 
-        // TODO ref_kb_id (uses dbReference)
+        // SKIP Get ref_kb_id
+
+        // Get dbReferences
+        DBRef dbRef = new DBRef();
+        List<String> pdb = new ArrayList<>();
+        List<String> reactome = new ArrayList<>();
+        List<String> geneWiki = new ArrayList<>();
+        NodeList dbRefs = proteinElement.getElementsByTagName("dbReference");
+        for (int dbRefIndex = 0; dbRefIndex < dbRefs.getLength(); dbRefIndex++) {
+            Element dbRefElement = (Element) dbRefs.item(dbRefIndex);
+            // Ignore if not a top-level dbReference
+            if (!dbRefElement.getParentNode().getNodeName().equals("entry")) {
+                continue;
+            }
+
+            String type = dbRefElement.getAttribute("type");
+            if (type.equals("PDB")) {
+                pdb.add(dbRefElement.getAttribute("id"));
+            } else if (type.equals("Reactome")) {
+                reactome.add(dbRefElement.getAttribute("id"));
+            } else if (type.equals("GeneWiki")) {
+                geneWiki.add(dbRefElement.getAttribute("id"));
+            }
+        }
+        dbRef.setPdb(String.join("\n", pdb));
+        dbRef.setReactome(String.join("\n", reactome));
+        dbRef.setGeneWiki(String.join("\n", geneWiki));
+        dbRef.setProtein_acc(protein.getProtein_acc());
+        dbRef.setProteinCurrent(protein);
+        protein.setDbRef(dbRef);
 
         // Get keywords
         NodeList keywords = proteinElement.getElementsByTagName("keyword");
@@ -591,7 +620,6 @@ public class ProteinUpdate {
         protein.setFeature_table(featureTable.toString());
 
         // Get species ID
-        // TODO Clarify single species per protein
         // Check scientific name first
         String species = ((Element) proteinElement.getElementsByTagName("organism").item(0))
                 .getElementsByTagName("name").item(0) // First species name should be scientific
@@ -606,7 +634,7 @@ public class ProteinUpdate {
         speciesID = DAOObject.getInstance().getProteinDAO().searchSpecies(species);
         protein.setSpecies(speciesID);
 
-        // TODO wiki_link
+        // SKIP wiki_link
 
         // Get genes (only take the first gene)
         Set<Gene> genes = new HashSet<Gene>();
@@ -626,9 +654,9 @@ public class ProteinUpdate {
         }
         protein.setGenes(genes);
 
-        // TODO PTMs
-        // TODO GoTerms
-        // TODO Spectra
+        // SKIP PTMs
+        // SKIP GoTerms
+        // SKIP Spectra
 
         return protein;
     }
