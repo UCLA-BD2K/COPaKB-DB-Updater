@@ -82,7 +82,7 @@ public class ProteinUpdate {
                         continue;
                     }
 
-                    if(DAOObject.getProteinDAO().searchByID(uniprotid) != null) {
+                    if(DAOObject.getInstance().getProteinDAO().searchByID(uniprotid) != null) {
                         System.out.println("Uniprot ID: " + uniprotid + " is already in the database.");
                         continue;
                     }
@@ -112,7 +112,7 @@ public class ProteinUpdate {
 
             return;
         }
-        //use HPA to get the correct ensemblegeneid for humans
+        //use HPAProtein to get the correct ensemblegeneid for humans
 
         System.out.println("\n\n");
         System.out.println("BEGINNING: " + dateBeg.toString());
@@ -128,7 +128,7 @@ public class ProteinUpdate {
      */
     public static Boolean addProtein(ProteinCurrent protein) {
         // Attempt to add the protein
-        String result = DAOObject.getProteinDAO().addProteinCurrent(protein);
+        String result = DAOObject.getInstance().getProteinDAO().addProteinCurrent(protein);
 
         // Process result
         if (result.isEmpty() || result.equals("Failed")) {
@@ -298,7 +298,7 @@ public class ProteinUpdate {
                 Gene table_gene = getGeneFromEnsembl(id);
                 table_gene.getDiseases();
                 table_gene.getProteins();
-                table_gene.getHpas();
+                table_gene.getHpaProteins();
                 genes.add(table_gene);
                 //System.out.println("gene = " + relatedGene + "\trelated ensembl = " + id);
             }
