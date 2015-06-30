@@ -25,10 +25,7 @@ public class DiseaseUpdate {
     private final static String format = "json";
     private final static String omimURL = "http://api.omim.org/api/search/geneMap?search=";
     public static void update(){
-
-
-        DAOObject obj = new DAOObject();
-        ProteinDAO proteinDAO = obj.getProteinDAO();
+        ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
 
         for (int i = 0; i < TOTALGENES; i+=CAPACITY) {
 
