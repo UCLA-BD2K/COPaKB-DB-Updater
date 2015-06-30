@@ -8,4 +8,5 @@ public class HPA_Update {
     //refer to HPA_Program.cs in resources folder
     //the file is the source code for the C# program
     //create a similar java program
+    //parsed file: http://www.proteinatlas.org/download/proteinatlas.xml.gz
 }

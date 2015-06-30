@@ -99,6 +99,11 @@
             <version>${hibernate.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.mashape.unirest</groupId>
+            <artifactId>unirest-java</artifactId>
+            <version>1.4.5</version>
+        </dependency>
 
     </dependencies>
 
