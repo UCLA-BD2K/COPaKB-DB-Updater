@@ -559,6 +559,8 @@ public class ProteinUpdate {
                 } else if (featureElement.getAttribute("type").equals("transit peptide") &&
                         featureElement.getAttribute("description").equals("Mitochondrion")) {
                     protein.setNoncytoplasmatic_domain(start + " - " + end);
+                } else if (featureElement.getAttribute("type").equals("signal peptide")) {
+                    protein.setSignal_peptide(start + " - " + end);
                 }
             } else {
                 // Handle position
