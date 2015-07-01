@@ -318,13 +318,15 @@ public class ProteinUpdate {
                 goTerm.setGO_accession(
                         Integer.valueOf(dbRefElement.getAttribute("id")
                                 .split(":")[1])); // Ignore the GO: prefix
-                goTerm.setTerms(
-                        ((Element) dbRefElement
-                                .getElementsByTagName("property").item(0))
-                                .getAttribute("value") + "; " +
-                                ((Element) dbRefElement
-                                        .getElementsByTagName("property").item(2))
-                                        .getAttribute("value"));
+                goTerm.setTerms(((Element) dbRefElement
+                        .getElementsByTagName("property").item(0))
+                        .getAttribute("value"));
+                goTerm.setEvidence(((Element) dbRefElement
+                        .getElementsByTagName("property").item(1))
+                        .getAttribute("value"));
+                goTerm.setReference(((Element) dbRefElement
+                        .getElementsByTagName("property").item(2))
+                        .getAttribute("value"));
                 Set<ProteinCurrent> proteins = new HashSet<>();
                 proteins.add(protein);
                 goTerm.setProteins(proteins);
