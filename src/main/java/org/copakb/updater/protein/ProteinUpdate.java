@@ -77,7 +77,7 @@ public class ProteinUpdate {
 
                     // Add to database
                     if (protein == null || !addProtein(protein)) {
-                        System.out.println(uniprotID + " retrieval failed.");
+                        System.out.println(uniprotID + " retrieval and update failed.");
                         if (PRINT_FAILED && writer != null) {
                             writer.println(uniprotID);
                         }
@@ -287,8 +287,6 @@ public class ProteinUpdate {
             featureTable.append(featureElement.getAttribute("description"));
         }
 
-        // SKIP Get ref_kb_id
-
         // Get dbReferences
         DBRef dbRef = new DBRef();
         List<String> pdb = new ArrayList<>();
@@ -355,12 +353,10 @@ public class ProteinUpdate {
         species = DAOObject.getInstance().getProteinDAO().searchSpecies(speciesName);
         protein.setSpecies(species);
 
-        // SKIP wiki_link
-
-        // Get genes (only take the first gene)
-        Set<Gene> genes = new HashSet<Gene>();
+        // Get gene
+        List<String> ensemblIDs = new ArrayList<>();
         NodeList dbReferences = proteinElement.getElementsByTagName("dbReference");
-        for (int dbRefIndex = 0; dbRefIndex < 1; dbRefIndex++) {
+        for (int dbRefIndex = 0; dbRefIndex < dbReferences.getLength(); dbRefIndex++) {
             Element dbRefElement = (Element) dbReferences.item(dbRefIndex);
             String dbRefType = dbRefElement.getAttribute("type");
             // TODO Create array to check against valid gene dbReference types
@@ -368,11 +364,18 @@ public class ProteinUpdate {
                 // TODO Check for property type = "gene ID", or verify consistency as 2nd element
                 Element property = (Element) dbRefElement.getElementsByTagName("property").item(1);
                 if (property != null) {
-                    String id = property.getAttribute("value");
-                    genes.add(getGeneFromEnsembl(id));
+                    ensemblIDs.add(property.getAttribute("value"));
                 }
             }
         }
+        Set<Gene> genes = new HashSet<>();
+        Gene gene = new Gene();
+        gene.setGene_name(((Element) proteinElement
+                .getElementsByTagName("gene").item(0))
+                .getElementsByTagName("name").item(0)
+                .getTextContent());
+        gene.setEnsembl_id(String.join(", ", ensemblIDs)); // Concatenate ensemblIDs
+        genes.add(gene);
         protein.setGenes(genes);
 
         // SKIP PTMs
