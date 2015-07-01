@@ -2,10 +2,7 @@ package org.copakb.updater.protein;
 
 import org.copakb.server.dao.DAOObject;
 import org.copakb.server.dao.ProteinDAO;
-import org.copakb.server.dao.model.DBRef;
-import org.copakb.server.dao.model.Gene;
-import org.copakb.server.dao.model.ProteinCurrent;
-import org.copakb.server.dao.model.Species;
+import org.copakb.server.dao.model.*;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -42,7 +39,7 @@ public class ProteinUpdate {
     }
 
     public static void main(String[] args) {
-            updateFromIDs("data/uniprot_not_added.txt");
+        updateFromIDs("data/uniprot_not_added.txt");
 //            updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
 //        updateFromFasta("./src/main/resources/test.fasta");
     }
@@ -103,8 +100,9 @@ public class ProteinUpdate {
      * @return Returns True if add successful or protein already exists.
      */
     public static Boolean addProtein(ProteinCurrent protein) {
+        ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
         // Attempt to add the protein
-        String result = DAOObject.getInstance().getProteinDAO().addProteinCurrent(protein);
+        String result = proteinDAO.addProteinCurrent(protein);
 
         // Process result
         if (result.isEmpty() || result.equals("Failed")) {
@@ -114,7 +112,8 @@ public class ProteinUpdate {
             System.out.println(protein.getProtein_acc() + " already exists in database.");
         }
 
-        DAOObject.getInstance().getProteinDAO().addDbRef(protein.getDbRef());
+        proteinDAO.addDbRef(protein.getDbRef());
+
         return true;
     }
 
@@ -135,7 +134,7 @@ public class ProteinUpdate {
             PrintWriter writer = null;
             if (PRINT_FAILED) {
                 writer = new PrintWriter(PRINT_FAILED_PATH, "UTF-8");
-            };
+            }
 
             while (sc.hasNextLine()) {
                 String uniprotID = sc.nextLine();
@@ -288,6 +287,7 @@ public class ProteinUpdate {
         }
 
         // Get dbReferences
+        Set<GoTerms> goTerms = new HashSet<>();
         DBRef dbRef = new DBRef();
         List<String> pdb = new ArrayList<>();
         List<String> reactome = new ArrayList<>();
@@ -312,8 +312,26 @@ public class ProteinUpdate {
                 protein.setChromosome(((Element) dbRefElement
                         .getElementsByTagName("property").item(0))
                         .getAttribute("value"));
+            } else if (type.equals("GO")) {
+                // Get GOTerms
+                GoTerms goTerm = new GoTerms();
+                goTerm.setGO_accession(
+                        Integer.valueOf(dbRefElement.getAttribute("id")
+                                .split(":")[1])); // Ignore the GO: prefix
+                goTerm.setTerms(
+                        ((Element) dbRefElement
+                                .getElementsByTagName("property").item(0))
+                                .getAttribute("value") + "; " +
+                                ((Element) dbRefElement
+                                        .getElementsByTagName("property").item(2))
+                                        .getAttribute("value"));
+                Set<ProteinCurrent> proteins = new HashSet<>();
+                proteins.add(protein);
+                goTerm.setProteins(proteins);
+                goTerms.add(goTerm);
             }
         }
+        protein.setGoTerms(goTerms);
         dbRef.setPdb(String.join("\n", pdb));
         dbRef.setReactome(String.join("\n", reactome));
         dbRef.setGeneWiki(String.join("\n", geneWiki));
