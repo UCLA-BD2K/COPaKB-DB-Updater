@@ -5,6 +5,7 @@ import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import com.mashape.unirest.http.exceptions.UnirestException;
 import org.copakb.server.dao.DAOObject;
+import org.copakb.server.dao.DiseaseDAO;
 import org.copakb.server.dao.ProteinDAO;
 import org.copakb.server.dao.model.Disease;
 import org.copakb.server.dao.model.DiseaseGene;
@@ -30,11 +31,11 @@ public class DiseaseUpdate {
     private final static String omimRef = "http://api.omim.org/api/entry/referenceList?mimNumber=";
     public static void update(){
 
-        ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
+        DiseaseDAO diseaseDAO = DAOObject.getInstance().getDiseaseDAO();
 
         for (int i = 0; i < TOTALGENES; i+=CAPACITY) {
 
-            List<Gene> genes = proteinDAO.limitedGeneList(i, CAPACITY);
+            List<Gene> genes = diseaseDAO.limitedGeneList(i, CAPACITY);
             if(genes.isEmpty())
                 break;
             for (Gene gene : genes) {
@@ -44,10 +45,8 @@ public class DiseaseUpdate {
                     //System.out.println(disease.getDOID()+"\t"+disease.getName());
                     //todo: update Disease table
                     System.out.println("Adding: " + disease.getDOID());
-                    proteinDAO.addDisease(disease);
-
-                    proteinDAO.addDiseaseGene(getDiseaseGene(disease, gene));
-
+                    diseaseDAO.addDisease(disease);
+                    diseaseDAO.addDiseaseGene(getDiseaseGene(disease, gene));
                 }
 
             }
