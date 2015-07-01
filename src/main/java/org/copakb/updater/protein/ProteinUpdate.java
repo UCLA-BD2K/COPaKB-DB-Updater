@@ -503,8 +503,8 @@ public class ProteinUpdate {
         // Get sequence
         protein.setSequence(proteinElement.getElementsByTagName("sequence").item(0).getTextContent());
 
-        // Get protein name
-        protein.setProtein_name(proteinElement.getElementsByTagName("name").item(0).getTextContent());
+        // Get protein full (recommended) name
+        protein.setProtein_name(proteinElement.getElementsByTagName("fullName").item(0).getTextContent());
 
         // Get molecular weight
         // Potential sequence nodes when there are isoforms, target should always be the last one
