@@ -311,8 +311,7 @@ public class ProteinUpdate {
                 // Get chromosome
                 protein.setChromosome(((Element) dbRefElement
                         .getElementsByTagName("property").item(0))
-                        .getAttribute("value")
-                        .split(" ")[1]); // Get the chromosome number only
+                        .getAttribute("value"));
             }
         }
         dbRef.setPdb(String.join("\n", pdb));
