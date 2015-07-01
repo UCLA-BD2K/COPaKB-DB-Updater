@@ -8,9 +8,6 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
-import uk.ac.ebi.kraken.interfaces.uniprot.UniProtEntry;
-import uk.ac.ebi.kraken.uuw.services.remoting.EntryRetrievalService;
-import uk.ac.ebi.kraken.uuw.services.remoting.UniProtJAPI;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -19,8 +16,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Created by vincekyi on 5/26/15.
@@ -39,8 +34,8 @@ public class ProteinUpdate {
     }
 
     public static void main(String[] args) {
-        updateFromIDs("data/uniprot_not_added.txt");
-//            updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+//        updateFromIDs("data/uniprot_not_added.txt");
+        updateFromFasta("data/uniprot_elegans_6239_canonical.fasta");
 //        updateFromFasta("./src/main/resources/test.fasta");
     }
 
@@ -70,7 +65,12 @@ public class ProteinUpdate {
                     }
 
                     // Get protein
-                    ProteinCurrent protein = getProteinFromUniprot(uniprotID);
+                    ProteinCurrent protein = null;
+                    try {
+                        protein = getProteinFromUniprot(uniprotID);
+                    } catch (IOException | SAXException | ParserConfigurationException e) {
+                        protein = null;
+                    }
 
                     // Add to database
                     if (protein == null || !addProtein(protein)) {
@@ -88,7 +88,7 @@ public class ProteinUpdate {
             writer.close();
             sc.close();
             inputStream.close();
-        } catch (SAXException | IOException | ParserConfigurationException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
@@ -146,7 +146,12 @@ public class ProteinUpdate {
                 }
 
                 // Get protein
-                ProteinCurrent protein = getProteinFromUniprot(uniprotID);
+                ProteinCurrent protein = null;
+                try {
+                    protein = getProteinFromUniprot(uniprotID);
+                } catch (IOException | SAXException | ParserConfigurationException e) {
+                    protein = null;
+                }
 
                 // Add to database
                 if (protein == null || !addProtein(protein)) {
@@ -163,7 +168,7 @@ public class ProteinUpdate {
             writer.close();
             sc.close();
             inputStream.close();
-        } catch (SAXException | IOException | ParserConfigurationException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
