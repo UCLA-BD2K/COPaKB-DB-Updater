@@ -7,6 +7,7 @@ import com.mashape.unirest.http.exceptions.UnirestException;
 import org.copakb.server.dao.DAOObject;
 import org.copakb.server.dao.ProteinDAO;
 import org.copakb.server.dao.model.Disease;
+import org.copakb.server.dao.model.DiseaseGene;
 import org.copakb.server.dao.model.Gene;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -24,7 +25,11 @@ public class DiseaseUpdate {
     private final static String apiKey = "030D6F97830E4C3BB0EB93407A1EC93F66887C80";
     private final static String format = "json";
     private final static String omimURL = "http://api.omim.org/api/search/geneMap?search=";
+    private final static String omimURL2 = "http://api.omim.org/api/entry?mimNumber=";
+    private final static String omimDesc = "include=text:description";
+    private final static String omimRef = "http://api.omim.org/api/entry/referenceList?mimNumber=";
     public static void update(){
+
         ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
 
         for (int i = 0; i < TOTALGENES; i+=CAPACITY) {
@@ -33,14 +38,16 @@ public class DiseaseUpdate {
             if(genes.isEmpty())
                 break;
             for (Gene gene : genes) {
+                System.out.println("**********************");
                 List<Disease> diseases = getDiseases(gene.getGene_name());
                 for (Disease disease : diseases) {
                     //System.out.println(disease.getDOID()+"\t"+disease.getName());
-                    //todo: update Disease_Gene table
                     //todo: update Disease table
-                    // suggestion: remove description and make heart_disease a flag
-                        //the flag would be manually switched by Howard
-                        //the flag is by default false
+                    System.out.println("Adding: " + disease.getDOID());
+                    proteinDAO.addDisease(disease);
+
+                    proteinDAO.addDiseaseGene(getDiseaseGene(disease, gene));
+
                 }
 
             }
@@ -65,6 +72,30 @@ public class DiseaseUpdate {
         return null;
     }
 
+    public static DiseaseGene getDiseaseGene(Disease disease, Gene gene) {
+        DiseaseGene diseaseGene = new DiseaseGene();
+        diseaseGene.setGene(gene);
+        diseaseGene.setDisease(disease);
+
+        JSONObject json = getJSON(omimRef + disease.getDOID());
+        // todo: update the the disease gene pubmed info; just take the first one.
+        JSONObject omim = json.getJSONObject("omim");
+
+        JSONArray referenceLists = omim.getJSONArray("referenceLists");
+        JSONArray referenceList = referenceLists.getJSONObject(0).getJSONArray("referenceList");
+        JSONObject reference = referenceList.getJSONObject(0).getJSONObject("reference");
+
+        /*JSONObject pubmedID = reference.getJSONObject("pubmedID");
+        JSONObject title = reference.getJSONObject("title");
+        JSONObject authors = reference.getJSONObject("authors");*/
+
+        diseaseGene.setPubmed_author(reference.getString("authors"));
+        diseaseGene.setPubmed_id(String.valueOf(reference.getInt("pubmedID")));
+        diseaseGene.setPubmed_title(reference.getString("title"));
+
+        return diseaseGene;
+    }
+
     public static List<Disease> getDiseases(String gene){
         ArrayList<Disease> diseases = new ArrayList<Disease>(0);
         if (gene.isEmpty()) {
@@ -84,18 +115,54 @@ public class DiseaseUpdate {
                     JSONObject j = phenotypeMapList.getJSONObject(i);
                     JSONObject phenotypeMap = j.getJSONObject("phenotypeMap");
 
-
                     Disease disease = new Disease();
+                    int omimId;
 
-                    if (phenotypeMap.has("phenotypeMimNumber"))
-                        disease.setDOID(phenotypeMap.getInt("phenotypeMimNumber"));
-                    else
+                    if (phenotypeMap.has("phenotypeMimNumber")) {
+                        omimId = phenotypeMap.getInt("phenotypeMimNumber");
+                        disease.setDOID(omimId);
+                    }
+                    else {
                         continue;
+                    }
 
-                    if (phenotypeMap.has("phenotype"))
-                        disease.setName(phenotypeMap.getString("phenotype"));
-                    else
+                    if (phenotypeMap.has("phenotype")) {
+                        // format the name
+                        // todo: not sure if the brackets mean something and should be kept?
+                        String name = phenotypeMap.getString("phenotype");
+                        name.replaceAll("[^A-Za-z0-9-, ]", "");
+                        disease.setName(name);
+                    }
+                    else {
                         continue;
+                    }
+
+                    System.out.println(omimId);
+                    try {
+                        // get description using omim id
+                        String description = "";
+                        JSONObject json2 = getJSON(omimURL2 + omimId + "&" + omimDesc);
+                        JSONObject omim2 = json2.getJSONObject("omim");
+                        JSONArray entryList = omim2.getJSONArray("entryList");
+                        for (int x = 0; x < entryList.length(); x++) {
+                            JSONObject entry = entryList.getJSONObject(x).getJSONObject("entry");
+                            if(entry.has("textSectionList")) {
+                                JSONArray textSectionList = entry.getJSONArray("textSectionList");
+                                for (int y = 0; y < textSectionList.length(); y++) {
+                                    JSONObject textSection = textSectionList.getJSONObject(y).getJSONObject("textSection");
+                                    description += textSection.getString("textSectionContent") + " ";
+                                }
+                            }
+                        }
+
+                        if(description.length() > 1000) { // truncate descriptions that are too long
+                            description = description.substring(0, 1000);
+                        }
+                        disease.setDescription(description);
+                    }
+                    catch(Exception ex) {
+                        ex.printStackTrace();
+                    }
 
                     diseases.add(disease);
                 }
