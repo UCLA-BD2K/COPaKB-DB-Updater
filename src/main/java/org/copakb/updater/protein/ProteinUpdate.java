@@ -309,6 +309,12 @@ public class ProteinUpdate {
                 reactome.add(dbRefElement.getAttribute("id"));
             } else if (type.equals("GeneWiki")) {
                 geneWiki.add(dbRefElement.getAttribute("id"));
+            } else if (type.equals("Proteomes")) {
+                // Get chromosome
+                protein.setChromosome(((Element) dbRefElement
+                        .getElementsByTagName("property").item(0))
+                        .getAttribute("value")
+                        .split(" ")[1]); // Get the chromosome number only
             }
         }
         dbRef.setPdb(String.join("\n", pdb));
@@ -419,9 +425,6 @@ public class ProteinUpdate {
             } else if (line.startsWith("display_name: ")) {
                 // Get display name
                 gene.setGene_name(line.split(" ")[1]);
-            } else if (line.startsWith("seq_region_name: ")) {
-                // Get chromosome
-                gene.setChromosome(line.split(" ")[1]);
             }
         }
 
