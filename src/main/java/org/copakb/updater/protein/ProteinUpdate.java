@@ -1,6 +1,7 @@
 package org.copakb.updater.protein;
 
 import org.copakb.server.dao.DAOObject;
+import org.copakb.server.dao.ProteinDAO;
 import org.copakb.server.dao.model.DBRef;
 import org.copakb.server.dao.model.Gene;
 import org.copakb.server.dao.model.ProteinCurrent;
@@ -33,86 +34,66 @@ public class ProteinUpdate {
     private static final String ENSEMBL_BASE_URL = "http://rest.ensembl.org/lookup/id/";
     private static final String UNIPROT_BASE_URL = "http://www.uniprot.org/uniprot/";
 
+    private static final Boolean PRINT_FAILED = true;
+    private static final String PRINT_FAILED_PATH = "target/uniprot_failed.txt";
+
     public ProteinUpdate() {
 
     }
 
     public static void main(String[] args) {
-//        updateFromIDs("data/uniprot_not_added.txt");
-//        updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
-        updateFromFasta("./src/main/resources/test.fasta");
+            updateFromIDs("data/uniprot_not_added.txt");
+//            updateFromFasta("./src/main/resources/uniprot_elegans_6239_canonical.fasta");
+//        updateFromFasta("./src/main/resources/test.fasta");
     }
 
-    // updates ProteinCurrent table given fasta file
-    public static void updateFromFasta(String file) {
-        Date dateBeg = new Date();
-        System.out.println("BEGINNING: " + dateBeg.toString());
-
-        String cleanFile = cleanFilePath(file);
-
-        EntryRetrievalService entryRetrievalService = UniProtJAPI.factory.getEntryRetrievalService();
-        UniProtEntry entry = null;
-        String uniprotid = "";
+    public static void updateFromFasta(String filepath) {
+        FileInputStream inputStream = null;
 
         try {
-            PrintWriter writer = new PrintWriter("./src/main/resources/uniprot_not_added.txt", "UTF-8");
+            inputStream = new FileInputStream(filepath);
+            Scanner sc = new Scanner(inputStream, "UTF-8");
 
-            Scanner scanner = new Scanner(new FileInputStream(cleanFile));
-            while (scanner.hasNextLine()) {
-                String uniprotheader = scanner.nextLine();
-                if (uniprotheader.startsWith(">")) {
-                    uniprotid = uniprotheader.substring(4, uniprotheader.indexOf("|", 4));
-                    try {
-                        entry = (UniProtEntry) entryRetrievalService.getUniProtEntry(uniprotid);
-                        System.out.println("\n*************************");
-                        System.out.println("Able to retrieve " + uniprotid + " from UniProt");
+            PrintWriter writer = null;
+            if (PRINT_FAILED) {
+                writer = new PrintWriter(PRINT_FAILED_PATH, "UTF-8");
+            }
 
-                    } catch (Exception ex) {
-                        System.out.println("Uniprot did not retrieve " + uniprotid + "\t" + ex.toString() + ex.getMessage());
-                        writer.println(uniprotid);
+            while (sc.hasNextLine()) {
+                String line = sc.nextLine();
+                // Check if header line
+                if (line.startsWith(">")) {
+                    // Get UniProt ID from header line
+                    String uniprotID = line.substring(4, line.indexOf("|", 4));
+
+                    // Skip if already in database
+                    if (DAOObject.getInstance().getProteinDAO().searchByID(uniprotID) != null) {
+                        System.out.println(uniprotID + " already exists.");
                         continue;
                     }
 
-                    if (entry == null) {
-                        System.out.println("Uniprot did not retrieve " + uniprotid + ". Could not find entry.");
-                        writer.println(uniprotid);
-                        continue;
-                    }
+                    // Get protein
+                    ProteinCurrent protein = getProteinFromUniprot(uniprotID);
 
-                    if (DAOObject.getInstance().getProteinDAO().searchByID(uniprotid) != null) {
-                        System.out.println("Uniprot ID: " + uniprotid + " is already in the database.");
-                        continue;
-                    }
-
-                    // gets the rest of the protein data
-                    ProteinCurrent protein = getProteinFromUniprot(uniprotid);
-
-                    // Add protein to database
+                    // Add to database
                     if (protein == null || !addProtein(protein)) {
-                        // make list of all uniprot id's that were not added
-                        writer.println(uniprotid);
+                        System.out.println(uniprotID + " retrieval failed.");
+                        if (PRINT_FAILED && writer != null) {
+                            writer.println(uniprotID);
+                        }
                         continue;
                     }
+
+                    System.out.println(uniprotID + " added.");
                 }
             }
-            scanner.close();
+
             writer.close();
-        } catch (Exception ex) {
-            if (entry == null) {
-                System.out.printf("%s:::%s\n%s\n", ex.toString(), uniprotid, ex.getMessage());
-            } else {
-                System.out.println(ex.toString() + ex.getMessage() + entry.getUniProtId());
-                ex.printStackTrace();
-            }
-
-            return;
+            sc.close();
+            inputStream.close();
+        } catch (SAXException | IOException | ParserConfigurationException e) {
+            e.printStackTrace();
         }
-        //use HPAProtein to get the correct ensemblegeneid for humans
-
-        System.out.println("\n\n");
-        System.out.println("BEGINNING: " + dateBeg.toString());
-        Date dateEnd = new Date();
-        System.out.println("ENDING: " + dateEnd.toString());
     }
 
     /**
@@ -138,68 +119,6 @@ public class ProteinUpdate {
     }
 
     /**
-     * Returns the Gene for an Ensembl ID
-     *
-     * @param ensemblID Ensembl ID to lookup
-     * @return Gene object with name, id, and chromosome
-     * @throws IOException
-     */
-    public static Gene getGeneFromEnsembl(String ensemblID) throws IOException {
-        // Generate URL
-        URL url = new URL(ENSEMBL_BASE_URL + ensemblID);
-
-        // Open connection
-        URLConnection connection = url.openConnection();
-        HttpURLConnection httpConnection = (HttpURLConnection) connection;
-        httpConnection.setRequestProperty("Content-Type", "text/plain; charset=utf-8");
-        InputStream response = connection.getInputStream();
-
-        // Validate response
-        int responseCode = httpConnection.getResponseCode();
-        if (responseCode != 200) {
-            throw new RuntimeException("Bad response: " + responseCode);
-        }
-
-        // Get content
-        Reader reader = new BufferedReader(new InputStreamReader(response, "UTF-8"));
-        StringBuilder sb = new StringBuilder();
-        char[] buffer = new char[CHAR_BUFFER_SIZE];
-        int read;
-        while ((read = reader.read(buffer, 0, buffer.length)) > 0) {
-            sb.append(buffer, 0, read);
-        }
-        reader.close();
-
-        // Get gene data
-        Gene gene = new Gene();
-        gene.setEnsembl_id(ensemblID);
-        String[] lines = sb.toString().split("\n");
-        for (String line : lines) {
-            if (line.startsWith("error: ")) {
-                throw new RuntimeException(line);
-            } else if (line.startsWith("display_name: ")) {
-                // Get display name
-                gene.setGene_name(line.split(" ")[1]);
-            } else if (line.startsWith("seq_region_name: ")) {
-                // Get chromosome
-                gene.setChromosome(line.split(" ")[1]);
-            }
-        }
-
-        return gene;
-    }
-
-    public static String cleanFilePath(String file) {
-        String result = file;
-        if (!file.substring(file.length() - 6).equals(".fasta"))
-            return null;
-        Pattern textPattern = Pattern.compile("[^0-9A-Za-z/\\._\\- ]");
-        Matcher textMatcher = textPattern.matcher(file);
-        result = textMatcher.replaceAll("");
-        return result;
-    }
-
-    /**
      * Updates ProteinCurrent table given a file of Uniprot IDs
      *
      * @param filename File with UniProtIDs
@@ -212,29 +131,40 @@ public class ProteinUpdate {
         try {
             inputStream = new FileInputStream(filename);
             Scanner sc = new Scanner(inputStream, "UTF-8");
-            ArrayList<String> failed = new ArrayList<String>();
+
+            PrintWriter writer = null;
+            if (PRINT_FAILED) {
+                writer = new PrintWriter(PRINT_FAILED_PATH, "UTF-8");
+            };
+
             while (sc.hasNextLine()) {
                 String uniprotID = sc.nextLine();
 
+                // Skip if already in database
                 if (DAOObject.getInstance().getProteinDAO().searchByID(uniprotID) != null) {
-                    System.out.println("Uniprot ID: " + uniprotID + " is already in the database.");
+                    System.out.println(uniprotID + " already exists.");
                     continue;
                 }
 
-                try {
-                    if (addProtein(getProteinFromUniprot(uniprotID))) {
-                        System.out.println(uniprotID + " SUCCESS"); // TODO Debug
+                // Get protein
+                ProteinCurrent protein = getProteinFromUniprot(uniprotID);
+
+                // Add to database
+                if (protein == null || !addProtein(protein)) {
+                    System.out.println(uniprotID + " retrieval failed.");
+                    if (PRINT_FAILED && writer != null) {
+                        writer.println(uniprotID);
                     }
-                } catch (Exception e) {
-                    failed.add(uniprotID);
-                    System.out.println(uniprotID + " FAILED"); // TODO Debug
+                    continue;
                 }
+
+                System.out.println(uniprotID + " added.");
             }
 
-            System.out.println("Failed: " + failed); // TODO Debug
+            writer.close();
             sc.close();
             inputStream.close();
-        } catch (IOException e) {
+        } catch (SAXException | IOException | ParserConfigurationException e) {
             e.printStackTrace();
         }
     }
@@ -242,9 +172,8 @@ public class ProteinUpdate {
     /**
      * Returns the ProteinCurrent for a UniProt ID
      *
-     * @param uniprotID
-     * @return
-     * @throws Exception
+     * @param uniprotID UniProt ID to get
+     * @return ProteinCurrent
      */
     private static ProteinCurrent getProteinFromUniprot(String uniprotID)
             throws IOException, ParserConfigurationException, SAXException {
@@ -405,20 +334,20 @@ public class ProteinUpdate {
         // Get feature table string
         protein.setFeature_table(featureTable.toString());
 
-        // Get species ID
+        // Get species
         // Check scientific name first
-        String species = ((Element) proteinElement.getElementsByTagName("organism").item(0))
+        String speciesName = ((Element) proteinElement.getElementsByTagName("organism").item(0))
                 .getElementsByTagName("name").item(0) // First species name should be scientific
                 .getTextContent();
         // Check common name
-        Species speciesID = DAOObject.getInstance().getProteinDAO().searchSpecies(species);
-        if (DAOObject.getInstance().getProteinDAO().searchSpecies(species) == null) {
-            species = ((Element) proteinElement.getElementsByTagName("organism").item(0))
+        Species species = DAOObject.getInstance().getProteinDAO().searchSpecies(speciesName);
+        if (species == null) {
+            speciesName = ((Element) proteinElement.getElementsByTagName("organism").item(0))
                     .getElementsByTagName("name").item(1) // Second species name should be common
                     .getTextContent();
         }
-        speciesID = DAOObject.getInstance().getProteinDAO().searchSpecies(species);
-        protein.setSpecies(speciesID);
+        species = DAOObject.getInstance().getProteinDAO().searchSpecies(speciesName);
+        protein.setSpecies(species);
 
         // SKIP wiki_link
 
@@ -446,4 +375,57 @@ public class ProteinUpdate {
 
         return protein;
     }
+
+    /**
+     * Returns the Gene for an Ensembl ID
+     *
+     * @param ensemblID Ensembl ID to lookup
+     * @return Gene object with name, id, and chromosome
+     * @throws IOException
+     */
+    public static Gene getGeneFromEnsembl(String ensemblID) throws IOException {
+        // Generate URL
+        URL url = new URL(ENSEMBL_BASE_URL + ensemblID);
+
+        // Open connection
+        URLConnection connection = url.openConnection();
+        HttpURLConnection httpConnection = (HttpURLConnection) connection;
+        httpConnection.setRequestProperty("Content-Type", "text/plain; charset=utf-8");
+        InputStream response = connection.getInputStream();
+
+        // Validate response
+        int responseCode = httpConnection.getResponseCode();
+        if (responseCode != 200) {
+            throw new RuntimeException("Bad response: " + responseCode);
+        }
+
+        // Get content
+        Reader reader = new BufferedReader(new InputStreamReader(response, "UTF-8"));
+        StringBuilder sb = new StringBuilder();
+        char[] buffer = new char[CHAR_BUFFER_SIZE];
+        int read;
+        while ((read = reader.read(buffer, 0, buffer.length)) > 0) {
+            sb.append(buffer, 0, read);
+        }
+        reader.close();
+
+        // Get gene data
+        Gene gene = new Gene();
+        gene.setEnsembl_id(ensemblID);
+        String[] lines = sb.toString().split("\n");
+        for (String line : lines) {
+            if (line.startsWith("error: ")) {
+                throw new RuntimeException(line);
+            } else if (line.startsWith("display_name: ")) {
+                // Get display name
+                gene.setGene_name(line.split(" ")[1]);
+            } else if (line.startsWith("seq_region_name: ")) {
+                // Get chromosome
+                gene.setChromosome(line.split(" ")[1]);
+            }
+        }
+
+        return gene;
+    }
+
 }
