@@ -5,12 +5,10 @@ import org.copakb.updater.disease.DiseaseUpdate;
 import org.copakb.updater.hpa.HPA_Update;
 import org.copakb.updater.protein.ProteinUpdate;
 import org.copakb.updater.spectra.SpectraUpdate;
-import org.xml.sax.SAXException;
-
-import javax.xml.parsers.ParserConfigurationException;
-import java.io.IOException;
 
 /**
+ * Main entry point for DB-Updater.
+ * <p>
  * Created by Alan on 7/1/2015.
  */
 public class DBUpdate {
@@ -48,9 +46,8 @@ public class DBUpdate {
                 .longOpt("spectra")
                 .desc("Update Spectra from COPA file")
                 .hasArgs()
-                .argName("file mod_id instr enzyme")
+                .argName("file> [module ID] <instrument> <enzyme")
                 .build();
-        optSpectra.setArgs(4);
         optionGroup.addOption(optSpectra);
 
         Option optHelp = Option.builder("h")
@@ -63,7 +60,7 @@ public class DBUpdate {
 
         // Create help text
         HelpFormatter formatter = new HelpFormatter();
-        String header = PROGRAM_DESCRIPTION  + "\n\n";
+        String header = PROGRAM_DESCRIPTION + "\n\n";
         String footer = "\n";
 
         // Parse command line arguments
@@ -73,36 +70,45 @@ public class DBUpdate {
             cmd = parser.parse(options, args);
         } catch (ParseException e) {
             formatter.printHelp(PROGRAM_NAME, header, options, footer, true);
-            return ;
-        }
-
-        // Process arguments
-        if (cmd.hasOption(optHelp.getOpt())) {
-            formatter.printHelp(PROGRAM_NAME, header, options, footer, true);
-            return ;
+            return;
         }
 
         if (cmd.hasOption(optDisease.getOpt())) {
             DiseaseUpdate.update();
-            return ;
+            return;
         }
 
         if (cmd.hasOption(optHPA.getOpt())) {
             HPA_Update.update(cmd.getOptionValue(optHPA.getOpt()));
-            return ;
+            return;
         }
 
         if (cmd.hasOption(optProteins.getOpt())) {
             ProteinUpdate.updateFromFasta(cmd.getOptionValue(optProteins.getOpt()));
-            return ;
+            return;
         }
 
         if (cmd.hasOption(optSpectra.getOpt())) {
-            SpectraUpdate.update(cmd.getOptionValue(optSpectra.getValue(0)),
-                    Integer.valueOf(optSpectra.getValue(1)),
-                    optSpectra.getValue(2),
-                    optSpectra.getValue(3));
-            return ;
+            String[] spectraArgs = cmd.getOptionValues(optSpectra.getOpt());
+            // Has Module ID
+            if (spectraArgs.length == 4) {
+                // Has module ID
+                SpectraUpdate.update(spectraArgs[0],
+                        Integer.valueOf(spectraArgs[1]),
+                        spectraArgs[2],
+                        spectraArgs[3]);
+            } else if (spectraArgs.length == 3) {
+                // Default module ID
+                SpectraUpdate.update(spectraArgs[0],
+                        -1,
+                        spectraArgs[1],
+                        spectraArgs[2]);
+            }
+
+            return;
         }
+
+        // Default or help
+        formatter.printHelp(PROGRAM_NAME, header, options, footer, true);
     }
 }
