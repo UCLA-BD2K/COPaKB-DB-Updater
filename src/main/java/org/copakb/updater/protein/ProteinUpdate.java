@@ -220,7 +220,8 @@ public class ProteinUpdate {
         protein.setProtein_acc(proteinElement.getElementsByTagName("accession").item(0).getTextContent());
 
         // Get sequence
-        protein.setSequence(proteinElement.getElementsByTagName("sequence").item(0).getTextContent());
+        protein.setSequence(proteinElement.getElementsByTagName("sequence").item(0).getTextContent()
+                .replaceAll("[^A-Z]", "").toUpperCase()); // Remove all non-uppercase non-alpha characters
 
         // Get protein full (recommended) name
         protein.setProtein_name(proteinElement.getElementsByTagName("fullName").item(0).getTextContent());
