@@ -20,7 +20,7 @@ import java.util.*;
 /**
  * Updates the database with HPA entries from a XML file
  * http://www.proteinatlas.org/download/proteinatlas.xml.gz
- *
+ * <p>
  * Based on doc/HPA_Program.cs
  * <p>
  * Created by Alan Kha on 6/22/15.
@@ -31,51 +31,56 @@ public class HPA_Update {
     private static final String HPA_XML_FOOTER = "\t<copyright>Copyrighted by the Human Protein Atlas, " +
             "http://www.proteinatlas.org/about</copyright>\n" + "</proteinAtlas>";
 
-    public static void main(String[] args) {
+    /**
+     * Updates the HPA tables with HPA proteins
+     * @param filename
+     */
+    public static void update(String filename) {
+        FileInputStream inputStream = null;
         try {
-            update("data/combined.xml");
-        } catch (ParserConfigurationException | IOException | SAXException e) {
-            e.printStackTrace();
-        }
-    }
+            inputStream = new FileInputStream(filename);
+            Scanner sc = new Scanner(inputStream, "UTF-8"); // Scanner avoids loading the entire XML file into memory
 
-    public static void update(String filename) throws IOException, SAXException, ParserConfigurationException {
-        FileInputStream inputStream = new FileInputStream(filename);
-        Scanner sc = new Scanner(inputStream, "UTF-8"); // Scanner avoids loading the entire XML file into memory
+            // Buffer individual proteins for parsing
+            // TODO Potential improvement by buffering more proteins at once (save DOM parse overhead?)
+            StringBuilder buffer = null;
+            ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
+            while (sc.hasNextLine()) {
+                String line = sc.nextLine();
 
-        // Buffer individual proteins for parsing
-        // TODO Potential improvement by buffering more proteins at once (save DOM parse overhead?)
-        StringBuilder buffer = null;
-        ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
-        while (sc.hasNextLine()) {
-            String line = sc.nextLine();
+                if (line.contains("<entry")) {
+                    // Create fresh StringBuilder for protein entry
+                    buffer = new StringBuilder();
+                    buffer.append(HPA_XML_HEADER + "\n");
+                }
 
-            if (line.contains("<entry")) {
-                // Create fresh StringBuilder for protein entry
-                buffer = new StringBuilder();
-                buffer.append(HPA_XML_HEADER + "\n");
-            }
+                if (buffer != null) {
+                    // Append only if within protein entry
+                    buffer.append(line).append("\n");
 
-            if (buffer != null) {
-                // Append only if within protein entry
-                buffer.append(line).append("\n");
-
-                if (line.contains("</entry>")) {
-                    // Complete, parse, and remove protein XML
-                    buffer.append(HPA_XML_FOOTER + "\n");
-                    for (HPAProtein protein : parseProteinXML(buffer.toString())) {
-                        proteinDAO.addHPAProtein(protein);
-                        for (Antibody antibody : protein.getAntibodies()) {
-                            proteinDAO.addAntibody(antibody);
+                    if (line.contains("</entry>")) {
+                        // Complete, parse, and remove protein XML
+                        buffer.append(HPA_XML_FOOTER + "\n");
+                        try {
+                            for (HPAProtein protein : parseProteinXML(buffer.toString())) {
+                                proteinDAO.addHPAProtein(protein);
+                                for (Antibody antibody : protein.getAntibodies()) {
+                                    proteinDAO.addAntibody(antibody);
+                                }
+                            }
+                        } catch (ParserConfigurationException | IOException | SAXException e) {
+                            // Continue
                         }
+                        buffer = null;
                     }
-                    buffer = null;
                 }
             }
-        }
 
-        sc.close();
-        inputStream.close();
+            sc.close();
+            inputStream.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public static List<HPAProtein> parseProteinXML(String xmlString)
@@ -107,7 +112,7 @@ public class HPA_Update {
 
             // Get protein classes
             List<String> proteinClasses = new ArrayList<>();
-            NodeList classNodes = ((Element)proteinElement.getElementsByTagName("proteinClasses").item(0))
+            NodeList classNodes = ((Element) proteinElement.getElementsByTagName("proteinClasses").item(0))
                     .getElementsByTagName("proteinClass");
             for (int classIndex = 0; classIndex < classNodes.getLength(); classIndex++) {
                 Element proteinClass = (Element) classNodes.item(classIndex);
