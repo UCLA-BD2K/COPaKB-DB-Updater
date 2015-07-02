@@ -29,6 +29,7 @@ public class DiseaseUpdate {
     private final static String omimURL2 = "http://api.omim.org/api/entry?mimNumber=";
     private final static String omimDesc = "include=text:description";
     private final static String omimRef = "http://api.omim.org/api/entry/referenceList?mimNumber=";
+
     public static void update(){
 
         DiseaseDAO diseaseDAO = DAOObject.getInstance().getDiseaseDAO();
@@ -40,13 +41,18 @@ public class DiseaseUpdate {
                 break;
             for (Gene gene : genes) {
                 System.out.println("**********************");
+                System.out.println("FOR GENE: " + gene.getGene_name() + "\n");
                 List<Disease> diseases = getDiseases(gene.getGene_name());
                 for (Disease disease : diseases) {
-                    //System.out.println(disease.getDOID()+"\t"+disease.getName());
-                    //todo: update Disease table
                     System.out.println("Adding: " + disease.getDOID());
+                    if(diseaseDAO.searchDisease(disease.getDOID()) != null) {
+                        System.out.println("\talready added");
+                        continue;
+                    }
                     diseaseDAO.addDisease(disease);
+
                     diseaseDAO.addDiseaseGene(getDiseaseGene(disease, gene));
+
                 }
 
             }
@@ -71,22 +77,34 @@ public class DiseaseUpdate {
         return null;
     }
 
+    /**
+     * Extracts DiseaseGene information from omim.org
+     * @param disease
+     * @param gene
+     * @return
+     */
     public static DiseaseGene getDiseaseGene(Disease disease, Gene gene) {
         DiseaseGene diseaseGene = new DiseaseGene();
         diseaseGene.setGene(gene);
         diseaseGene.setDisease(disease);
 
         JSONObject json = getJSON(omimRef + disease.getDOID());
-        // todo: update the the disease gene pubmed info; just take the first one.
+
         JSONObject omim = json.getJSONObject("omim");
 
+        // only takes first pubmed information with all necessary values
         JSONArray referenceLists = omim.getJSONArray("referenceLists");
         JSONArray referenceList = referenceLists.getJSONObject(0).getJSONArray("referenceList");
-        JSONObject reference = referenceList.getJSONObject(0).getJSONObject("reference");
-
-        /*JSONObject pubmedID = reference.getJSONObject("pubmedID");
-        JSONObject title = reference.getJSONObject("title");
-        JSONObject authors = reference.getJSONObject("authors");*/
+        JSONObject reference = null;
+        for(int i = 0; i < referenceList.length(); i++) { // iterate until it has an entry with all values
+            reference = referenceList.getJSONObject(i).getJSONObject("reference");
+            if(reference.has("authors") && reference.has("pubmedID") && reference.has("title")) {
+                diseaseGene.setPubmed_author("");
+                diseaseGene.setPubmed_id("");
+                diseaseGene.setPubmed_title("");
+                break;
+            }
+        }
 
         diseaseGene.setPubmed_author(reference.getString("authors"));
         diseaseGene.setPubmed_id(String.valueOf(reference.getInt("pubmedID")));
@@ -95,13 +113,18 @@ public class DiseaseUpdate {
         return diseaseGene;
     }
 
+    /**
+     * Extracts Disease information from omim.org
+     * @param gene
+     * @return
+     */
     public static List<Disease> getDiseases(String gene){
         ArrayList<Disease> diseases = new ArrayList<Disease>(0);
         if (gene.isEmpty()) {
             return diseases;
         }
 
-        JSONObject json = getJSON(omimURL+gene);
+        JSONObject json = getJSON(omimURL + gene);
 
         JSONObject omim = json.getJSONObject("omim");
         JSONObject searchResponse = omim.getJSONObject("searchResponse");
@@ -154,7 +177,7 @@ public class DiseaseUpdate {
                             }
                         }
 
-                        if(description.length() > 1000) { // truncate descriptions that are too long
+                        if(description.length() >= 1000) { // truncate descriptions that are too long
                             description = description.substring(0, 1000);
                         }
                         disease.setDescription(description);

@@ -452,7 +452,7 @@ public class SpectraUpdate {
 //            64	Pyro-carbamidomethyl	C	39.99492
 //            128	Pyro-glu	E	-17.03000
 
-    public static int parsePtmSequence(String ptm_sequence) {
+    private static int parsePtmSequence(String ptm_sequence) {
         int result = 0;
         double range = 0.01;
 

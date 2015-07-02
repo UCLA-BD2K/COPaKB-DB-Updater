@@ -35,7 +35,7 @@ public class ProteinUpdate {
 
     public static void main(String[] args) {
 //        updateFromIDs("data/uniprot_not_added.txt");
-        updateFromFasta("data/uniprot_elegans_6239_canonical.fasta");
+        updateFromFasta("src/main/resources/uniprot_elegans_6239_canonical.fasta");
 //        updateFromFasta("./src/main/resources/test.fasta");
     }
 
@@ -379,7 +379,7 @@ public class ProteinUpdate {
         protein.setSpecies(species);
 
         // Get gene
-        List<String> ensemblIDs = new ArrayList<>();
+        Set<String> ensemblIDs = new HashSet<>();
         NodeList dbReferences = proteinElement.getElementsByTagName("dbReference");
         for (int dbRefIndex = 0; dbRefIndex < dbReferences.getLength(); dbRefIndex++) {
             Element dbRefElement = (Element) dbReferences.item(dbRefIndex);
@@ -395,10 +395,15 @@ public class ProteinUpdate {
         }
         Set<Gene> genes = new HashSet<>();
         Gene gene = new Gene();
-        gene.setGene_name(((Element) proteinElement
-                .getElementsByTagName("gene").item(0))
-                .getElementsByTagName("name").item(0)
-                .getTextContent());
+        if(proteinElement.getElementsByTagName("gene").getLength() >= 1) {
+            gene.setGene_name(((Element) proteinElement
+                    .getElementsByTagName("gene").item(0))
+                    .getElementsByTagName("name").item(0)
+                    .getTextContent());
+        }
+        else {
+            return null;
+        }
         gene.setEnsembl_id(String.join(", ", ensemblIDs)); // Concatenate ensemblIDs
         genes.add(gene);
         protein.setGenes(genes);
