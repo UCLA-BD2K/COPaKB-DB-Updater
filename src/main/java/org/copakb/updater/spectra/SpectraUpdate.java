@@ -22,6 +22,8 @@ import java.util.regex.Pattern;
  */
 public class SpectraUpdate {
 
+    private static String SPECTRUM_OUTPUT_PATH = "target/Spectra_Files/";
+
     private static int specNumCounter = 0;
     private static int reverseCounter = 0;
 
@@ -165,7 +167,8 @@ public class SpectraUpdate {
             int specNum = peptideDAO.addSpectrum(spectrum);
 
             // create and save spectrum files; currently hardcoded the location
-            String fileName = "C:/Users/Ping PC1/Spectra_Files/" + specNum + ".txt";
+            new File(SPECTRUM_OUTPUT_PATH).mkdir();
+            String fileName = SPECTRUM_OUTPUT_PATH + specNum + ".txt";
             try {
                 writer = new BufferedWriter(new FileWriter(new File(fileName)));
                 writer.write((String) entry.get("header") + "\n");
