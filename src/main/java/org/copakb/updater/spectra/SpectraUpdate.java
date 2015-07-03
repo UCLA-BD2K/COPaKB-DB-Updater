@@ -229,6 +229,7 @@ public class SpectraUpdate {
                 sp.setSpecies_unique(true);
                 Spectrum tempSpec = peptideDAO.searchSpectrum(spectrum.getPtm_sequence(), spectrum.getModule().getMod_id(), spectrum.getCharge_state());
                 sp.setSpectrum(tempSpec);
+                sp.setPeptide(tempPep);
                 proteinDAO.addSpectrumProtein(sp);
             }
             //need to get spectrum_id
