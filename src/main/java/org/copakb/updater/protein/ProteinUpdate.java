@@ -112,8 +112,6 @@ public class ProteinUpdate {
             System.out.println(protein.getProtein_acc() + " already exists in database.");
         }
 
-        proteinDAO.addDbRef(protein.getDbRef());
-
         return true;
     }
 
