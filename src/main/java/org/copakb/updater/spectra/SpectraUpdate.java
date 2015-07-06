@@ -5,10 +5,12 @@ import org.copakb.server.dao.PeptideDAO;
 import org.copakb.server.dao.ProteinDAO;
 import org.copakb.server.dao.model.*;
 import org.copakb.updater.protein.ProteinUpdate;
+import org.xml.sax.SAXException;
 import uk.ac.ebi.kraken.interfaces.uniprot.UniProtEntry;
 import uk.ac.ebi.kraken.uuw.services.remoting.EntryRetrievalService;
 import uk.ac.ebi.kraken.uuw.services.remoting.UniProtJAPI;
 
+import javax.xml.parsers.ParserConfigurationException;
 import java.io.*;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
@@ -181,9 +183,6 @@ public class SpectraUpdate {
             }
 
             // Spectrum Protein
-            EntryRetrievalService entryRetrievalService = UniProtJAPI.factory.getEntryRetrievalService();
-            UniProtEntry uniProtEntry = null;
-
             SpectrumProtein sp = new SpectrumProtein();
             sp.setPrevAA(whole_sequence.charAt(0));
             sp.setNextAA(whole_sequence.charAt(whole_sequence.length() - 1));
@@ -197,24 +196,18 @@ public class SpectraUpdate {
             for (String token : tokens) {
                 System.out.println("Token " + token);
                 prot = proteinDAO.searchByID(token);
-                if(prot == null) {
-                    try { // use uniprot.org to find protein sequence if not in database
-                        uniProtEntry = (UniProtEntry) entryRetrievalService.getUniProtEntry(token);
-                        if(uniProtEntry == null) {
-                            System.out.println("Uniprot Entry does not exist!");
-                            continue;
-                        }
-                        protSeq = uniProtEntry.getSequence().getValue();
+                if (prot == null) {
+                    try {
+                        // Get and add protein if not in database
+                        prot = ProteinUpdate.getProteinFromUniprot(token);
+                        DAOObject.proteinDAO.addProteinCurrent(prot);
+                    } catch (IOException | ParserConfigurationException | SAXException e) {
+                        e.printStackTrace();
+                    }
+                }
 
-                    }
-                    catch (Exception e) {
-                        System.out.println("Uniprot did not retrieve " + token + "\t" + e.toString() + e.getMessage());
-                        continue;
-                    }
-                }
-                else {
-                    protSeq = prot.getSequence();
-                }
+                assert prot != null;
+                protSeq = prot.getSequence();
 
                 String tempPtmSeq = ptm_sequence.replaceAll("[^A-Za-z]", "");
                 loc = protSeq.indexOf(tempPtmSeq);

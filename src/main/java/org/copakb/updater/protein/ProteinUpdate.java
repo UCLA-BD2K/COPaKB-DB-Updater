@@ -177,7 +177,7 @@ public class ProteinUpdate {
      * @param uniprotID UniProt ID to get
      * @return ProteinCurrent
      */
-    private static ProteinCurrent getProteinFromUniprot(String uniprotID)
+    public static ProteinCurrent getProteinFromUniprot(String uniprotID)
             throws IOException, ParserConfigurationException, SAXException {
         // Generate XML URL
         URL url = new URL(UNIPROT_BASE_URL + uniprotID + ".xml");
