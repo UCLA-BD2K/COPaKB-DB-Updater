@@ -18,10 +18,10 @@ import java.net.URLConnection;
 import java.util.*;
 
 /**
+ * Update proteins from FASTA or UniProt IDs.
  * Created by vincekyi on 5/26/15.
  */
 public class ProteinUpdate {
-
     private static final int CHAR_BUFFER_SIZE = 8192;
     private static final String ENSEMBL_BASE_URL = "http://rest.ensembl.org/lookup/id/";
     private static final String UNIPROT_BASE_URL = "http://www.uniprot.org/uniprot/";
@@ -30,10 +30,8 @@ public class ProteinUpdate {
     private static final String PRINT_FAILED_PATH = "target/uniprot_failed.txt";
 
     public static void updateFromFasta(String filepath) {
-        FileInputStream inputStream = null;
-
         try {
-            inputStream = new FileInputStream(filepath);
+            FileInputStream inputStream = new FileInputStream(filepath);
             Scanner sc = new Scanner(inputStream, "UTF-8");
 
             PrintWriter writer = null;
@@ -55,7 +53,7 @@ public class ProteinUpdate {
                     }
 
                     // Get protein
-                    ProteinCurrent protein = null;
+                    ProteinCurrent protein;
                     try {
                         protein = getProteinFromUniprot(uniprotID);
                     } catch (IOException | SAXException | ParserConfigurationException e) {
@@ -65,7 +63,7 @@ public class ProteinUpdate {
                     // Add to database
                     if (protein == null || !addProtein(protein)) {
                         System.out.println(uniprotID + " retrieval and update failed.");
-                        if (PRINT_FAILED && writer != null) {
+                        if (PRINT_FAILED) {
                             writer.println(uniprotID);
                         }
                         continue;
@@ -75,6 +73,7 @@ public class ProteinUpdate {
                 }
             }
 
+            assert writer != null;
             writer.close();
             sc.close();
             inputStream.close();
@@ -87,14 +86,11 @@ public class ProteinUpdate {
      * Updates ProteinCurrent table given a file of Uniprot IDs
      *
      * @param filename File with UniProtIDs
-     * @throws Exception
      */
     public static void updateFromIDs(String filename) {
         // Open file and iterate through UniProt IDs
-        FileInputStream inputStream = null;
-
         try {
-            inputStream = new FileInputStream(filename);
+            FileInputStream inputStream = new FileInputStream(filename);
             Scanner sc = new Scanner(inputStream, "UTF-8");
 
             PrintWriter writer = null;
@@ -112,7 +108,7 @@ public class ProteinUpdate {
                 }
 
                 // Get protein
-                ProteinCurrent protein = null;
+                ProteinCurrent protein;
                 try {
                     protein = getProteinFromUniprot(uniprotID);
                 } catch (IOException | SAXException | ParserConfigurationException e) {
@@ -122,7 +118,7 @@ public class ProteinUpdate {
                 // Add to database
                 if (protein == null || !addProtein(protein)) {
                     System.out.println(uniprotID + " retrieval failed.");
-                    if (PRINT_FAILED && writer != null) {
+                    if (PRINT_FAILED) {
                         writer.println(uniprotID);
                     }
                     continue;
@@ -131,7 +127,10 @@ public class ProteinUpdate {
                 System.out.println(uniprotID + " added.");
             }
 
-            writer.close();
+            if (writer != null) {
+                writer.close();
+            }
+
             sc.close();
             inputStream.close();
         } catch (IOException e) {
@@ -154,16 +153,16 @@ public class ProteinUpdate {
         URLConnection connection = url.openConnection();
         HttpURLConnection httpConnection = (HttpURLConnection) connection;
         httpConnection.setRequestProperty("Content-Type", "application/json");
-        InputStream response = connection.getInputStream();
 
         // Validate response
         int responseCode = httpConnection.getResponseCode();
         if (responseCode != 200) {
-            throw new RuntimeException("Bad response: " + responseCode);
+            System.err.println("Bad url: " + url);
+            return null;
         }
 
         // Get content
-        Reader reader = new BufferedReader(new InputStreamReader(response, "UTF-8"));
+        Reader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
         StringBuilder sb = new StringBuilder();
         char[] buffer = new char[CHAR_BUFFER_SIZE];
         int read;
@@ -216,7 +215,7 @@ public class ProteinUpdate {
             }
 
             // Append feature type
-            featureTable.append(featureElement.getAttribute("type") + "\t");
+            featureTable.append(featureElement.getAttribute("type")).append("\t");
 
             // Feature element location has start/end OR position
             if (position.getLength() == 0) {
@@ -229,7 +228,7 @@ public class ProteinUpdate {
                         .getAttribute("position");
 
                 // Append start/end positions
-                featureTable.append(start + "\t" + end + "\t");
+                featureTable.append(start).append("\t").append(end).append("\t");
 
                 // Set domain values
                 if (featureElement.getAttribute("type").equals("transmembrane region")) {
@@ -249,7 +248,7 @@ public class ProteinUpdate {
             } else {
                 // Handle position
                 // Append position position
-                featureTable.append(((Element) position.item(0)).getAttribute("position") + "\t");
+                featureTable.append(((Element) position.item(0)).getAttribute("position")).append("\t");
             }
 
             // Append feature description
@@ -270,37 +269,43 @@ public class ProteinUpdate {
                 continue;
             }
 
-            String type = dbRefElement.getAttribute("type");
-            if (type.equals("PDB")) {
-                pdb.add(dbRefElement.getAttribute("id"));
-            } else if (type.equals("Reactome")) {
-                reactome.add(dbRefElement.getAttribute("id"));
-            } else if (type.equals("GeneWiki")) {
-                geneWiki.add(dbRefElement.getAttribute("id"));
-            } else if (type.equals("Proteomes")) {
-                // Get chromosome
-                protein.setChromosome(((Element) dbRefElement
-                        .getElementsByTagName("property").item(0))
-                        .getAttribute("value"));
-            } else if (type.equals("GO")) {
-                // Get GOTerms
-                GoTerms goTerm = new GoTerms();
-                goTerm.setGO_accession(
-                        Integer.valueOf(dbRefElement.getAttribute("id")
-                                .split(":")[1])); // Ignore the GO: prefix
-                goTerm.setTerms(((Element) dbRefElement
-                        .getElementsByTagName("property").item(0))
-                        .getAttribute("value"));
-                goTerm.setEvidence(((Element) dbRefElement
-                        .getElementsByTagName("property").item(1))
-                        .getAttribute("value"));
-                goTerm.setReference(((Element) dbRefElement
-                        .getElementsByTagName("property").item(2))
-                        .getAttribute("value"));
-                Set<ProteinCurrent> proteins = new HashSet<>();
-                proteins.add(protein);
-                goTerm.setProteins(proteins);
-                goTerms.add(goTerm);
+            switch (dbRefElement.getAttribute("type")) {
+                case "PDB":
+                    pdb.add(dbRefElement.getAttribute("id"));
+                    break;
+                case "Reactome":
+                    reactome.add(dbRefElement.getAttribute("id"));
+                    break;
+                case "GeneWiki":
+                    geneWiki.add(dbRefElement.getAttribute("id"));
+                    break;
+                case "Proteomes":
+                    // Get chromosome
+                    protein.setChromosome(((Element) dbRefElement
+                            .getElementsByTagName("property").item(0))
+                            .getAttribute("value"));
+                    break;
+                case "GO":
+                    // Get GOTerms
+                    GoTerms goTerm = new GoTerms();
+                    goTerm.setGO_accession(
+                            Integer.valueOf(dbRefElement.getAttribute("id")
+                                    .split(":")[1])); // Ignore the GO: prefix
+
+                    goTerm.setTerms(((Element) dbRefElement
+                            .getElementsByTagName("property").item(0))
+                            .getAttribute("value"));
+                    goTerm.setEvidence(((Element) dbRefElement
+                            .getElementsByTagName("property").item(1))
+                            .getAttribute("value"));
+                    goTerm.setReference(((Element) dbRefElement
+                            .getElementsByTagName("property").item(2))
+                            .getAttribute("value"));
+                    Set<ProteinCurrent> proteins = new HashSet<>();
+                    proteins.add(protein);
+                    goTerm.setProteins(proteins);
+                    goTerms.add(goTerm);
+                    break;
             }
         }
         protein.setGoTerms(goTerms);
@@ -348,9 +353,7 @@ public class ProteinUpdate {
         for (int dbRefIndex = 0; dbRefIndex < dbReferences.getLength(); dbRefIndex++) {
             Element dbRefElement = (Element) dbReferences.item(dbRefIndex);
             String dbRefType = dbRefElement.getAttribute("type");
-            // TODO Create array to check against valid gene dbReference types
             if (dbRefType.startsWith("Ensembl") || dbRefType.startsWith("WormBase")) {
-                // TODO Check for property type = "gene ID", or verify consistency as 2nd element
                 Element property = (Element) dbRefElement.getElementsByTagName("property").item(1);
                 if (property != null) {
                     ensemblIDs.add(property.getAttribute("value"));
@@ -359,13 +362,12 @@ public class ProteinUpdate {
         }
         Set<Gene> genes = new HashSet<>();
         Gene gene = new Gene();
-        if(proteinElement.getElementsByTagName("gene").getLength() >= 1) {
+        if (proteinElement.getElementsByTagName("gene").getLength() >= 1) {
             gene.setGene_name(((Element) proteinElement
                     .getElementsByTagName("gene").item(0))
                     .getElementsByTagName("name").item(0)
                     .getTextContent());
-        }
-        else {
+        } else {
             return null;
         }
         gene.setEnsembl_id(String.join(", ", ensemblIDs)); // Concatenate ensemblIDs
@@ -412,16 +414,16 @@ public class ProteinUpdate {
         URLConnection connection = url.openConnection();
         HttpURLConnection httpConnection = (HttpURLConnection) connection;
         httpConnection.setRequestProperty("Content-Type", "text/plain; charset=utf-8");
-        InputStream response = connection.getInputStream();
 
         // Validate response
         int responseCode = httpConnection.getResponseCode();
         if (responseCode != 200) {
-            throw new RuntimeException("Bad response: " + responseCode);
+            System.err.println("Bad url: " + url);
+            return null;
         }
 
         // Get content
-        Reader reader = new BufferedReader(new InputStreamReader(response, "UTF-8"));
+        Reader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
         StringBuilder sb = new StringBuilder();
         char[] buffer = new char[CHAR_BUFFER_SIZE];
         int read;
@@ -445,5 +447,4 @@ public class ProteinUpdate {
 
         return gene;
     }
-
 }
