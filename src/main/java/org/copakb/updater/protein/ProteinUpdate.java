@@ -185,16 +185,14 @@ public class ProteinUpdate {
         // Get accession (UniProt ID, use first one as primary)
         protein.setProtein_acc(proteinElement.getElementsByTagName("accession").item(0).getTextContent());
 
-        // Get sequence
-        protein.setSequence(proteinElement.getElementsByTagName("sequence").item(0).getTextContent()
-                .replaceAll("[^A-Z]", "").toUpperCase()); // Remove all non-uppercase non-alpha characters
-
         // Get protein full (recommended) name
         protein.setProtein_name(proteinElement.getElementsByTagName("fullName").item(0).getTextContent());
 
-        // Get molecular weight
-        // Potential sequence nodes when there are isoforms, target should always be the last one
+        // Get sequence and molecular weight
+        // Potential sequence nodes when there are isoforms, target should always be the last node
         NodeList sequences = proteinElement.getElementsByTagName("sequence");
+        protein.setSequence(sequences.item(sequences.getLength() - 1).getTextContent()
+                .replaceAll("[^A-Z]", "")); // Strip non-uppercase alpha characters
         protein.setMolecular_weight(Double.valueOf(
                 ((Element) sequences.item(sequences.getLength() - 1)).getAttribute("mass")));
 
