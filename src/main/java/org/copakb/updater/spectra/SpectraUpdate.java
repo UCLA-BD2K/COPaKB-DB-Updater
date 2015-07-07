@@ -609,18 +609,4 @@ public class SpectraUpdate {
             peptideDAO.addPtmType(tempPtmType);
         }
     }
-
-    public static void main(String[] args) {
-        /*String s = "p1;";
-        String[] tokens = s.split(";");
-        for (String token : tokens) {
-            System.out.println(token);
-        }*/
-
-        update("./src/main/resources/mouse_heart_nuclei.copa", -1, "LTQ", "Trypsin");
-
-        //parsePtmSequence("(42.0106)VNKVIEINPYLLGTM(15.9949)SGCAADCQYWER");
-
-        //addPtm_Types();
-    }
 }

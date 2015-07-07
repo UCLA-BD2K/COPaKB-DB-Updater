@@ -25,7 +25,7 @@ import java.util.*;
  * <p>
  * Created by Alan Kha on 6/22/15.
  */
-public class HPA_Update {
+public class HPAUpdate {
     private static final String HPA_XML_HEADER = "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n" +
             "<proteinAtlas xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" schemaVersion=\"2.1\">";
     private static final String HPA_XML_FOOTER = "\t<copyright>Copyrighted by the Human Protein Atlas, " +

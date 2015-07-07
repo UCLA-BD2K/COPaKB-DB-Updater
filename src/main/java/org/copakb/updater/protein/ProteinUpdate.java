@@ -29,16 +29,6 @@ public class ProteinUpdate {
     private static final Boolean PRINT_FAILED = true;
     private static final String PRINT_FAILED_PATH = "target/uniprot_failed.txt";
 
-    public ProteinUpdate() {
-
-    }
-
-    public static void main(String[] args) {
-//        updateFromIDs("data/uniprot_not_added.txt");
-        updateFromFasta("src/main/resources/uniprot_elegans_6239_canonical.fasta");
-//        updateFromFasta("./src/main/resources/test.fasta");
-    }
-
     public static void updateFromFasta(String filepath) {
         FileInputStream inputStream = null;
 
@@ -91,28 +81,6 @@ public class ProteinUpdate {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    /**
-     * Attempts to add a protein to the database.
-     *
-     * @param protein ProteinCurrent to add
-     * @return Returns True if add successful or protein already exists.
-     */
-    public static Boolean addProtein(ProteinCurrent protein) {
-        ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
-        // Attempt to add the protein
-        String result = proteinDAO.addProteinCurrent(protein);
-
-        // Process result
-        if (result.isEmpty() || result.equals("Failed")) {
-            System.out.println(protein.getProtein_acc() + " add failed.");
-            return false;
-        } else if (result.equals("Existed")) {
-            System.out.println(protein.getProtein_acc() + " already exists in database.");
-        }
-
-        return true;
     }
 
     /**
@@ -406,11 +374,29 @@ public class ProteinUpdate {
         genes.add(gene);
         protein.setGenes(genes);
 
-        // SKIP PTMs
-        // SKIP GoTerms
-        // SKIP Spectra
-
         return protein;
+    }
+
+    /**
+     * Attempts to add a protein to the database.
+     *
+     * @param protein ProteinCurrent to add
+     * @return Returns True if add successful or protein already exists.
+     */
+    public static Boolean addProtein(ProteinCurrent protein) {
+        ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
+        // Attempt to add the protein
+        String result = proteinDAO.addProteinCurrent(protein);
+
+        // Process result
+        if (result.isEmpty() || result.equals("Failed")) {
+            System.out.println(protein.getProtein_acc() + " add failed.");
+            return false;
+        } else if (result.equals("Existed")) {
+            System.out.println(protein.getProtein_acc() + " already exists in database.");
+        }
+
+        return true;
     }
 
     /**

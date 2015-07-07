@@ -193,9 +193,4 @@ public class DiseaseUpdate {
 
         return diseases;
     }
-
-
-    public static void main(String[] args) {
-        update();
-    }
 }

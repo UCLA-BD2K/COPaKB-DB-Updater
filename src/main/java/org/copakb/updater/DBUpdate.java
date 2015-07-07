@@ -2,7 +2,7 @@ package org.copakb.updater;
 
 import org.apache.commons.cli.*;
 import org.copakb.updater.disease.DiseaseUpdate;
-import org.copakb.updater.hpa.HPA_Update;
+import org.copakb.updater.hpa.HPAUpdate;
 import org.copakb.updater.protein.ProteinUpdate;
 import org.copakb.updater.spectra.SpectraUpdate;
 
@@ -79,7 +79,7 @@ public class DBUpdate {
         }
 
         if (cmd.hasOption(optHPA.getOpt())) {
-            HPA_Update.update(cmd.getOptionValue(optHPA.getOpt()));
+            HPAUpdate.update(cmd.getOptionValue(optHPA.getOpt()));
             return;
         }
 
