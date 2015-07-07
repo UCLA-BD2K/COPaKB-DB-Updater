@@ -1,5 +1,6 @@
 package org.copakb.updater.protein;
 
+import org.copakb.server.dao.DAOObject;
 import org.copakb.server.dao.model.Gene;
 import org.copakb.server.dao.model.ProteinCurrent;
 import org.junit.Test;
@@ -16,8 +17,11 @@ public class ProteinUpdateTest {
 
     @Test
     public void testGetGeneFromEnsembl() throws Exception {
-        Gene gene = ProteinUpdate.getGeneFromEnsembl(ENSEMBL_ID);
+        // Check non-gene
+        assert ProteinUpdate.getGeneFromEnsembl("") == null;
 
+        // Check good gene
+        Gene gene = ProteinUpdate.getGeneFromEnsembl(ENSEMBL_ID);
         assert gene != null;
         assert gene.getGene_name().equals("CYCS");
         assert gene.getEnsembl_id().equals(ENSEMBL_ID);
@@ -25,20 +29,29 @@ public class ProteinUpdateTest {
 
     @Test
     public void testGetProteinFromUniprot() throws Exception {
-        ProteinCurrent protein = ProteinUpdate.getProteinFromUniprot(UNIPROT_ID);
+        // Check non-protein
+        assert ProteinUpdate.getProteinFromUniprot("") == null;
 
+        // Check good protein
+        ProteinCurrent protein = ProteinUpdate.getProteinFromUniprot(UNIPROT_ID);
         assert protein != null;
-        assert protein.getProtein_acc().equals("P99999");
+        assert protein.getProtein_acc().equals(UNIPROT_ID);
         assert protein.getProtein_name().equals("Cytochrome c");
         assert protein.getChromosome().equals("Chromosome 7");
         assert protein.getSequence().length() == 105;
+
+        for (Gene g : protein.getGenes()) {
+            assert g.getGene_name().equals("CYCS");
+            assert g.getEnsembl_id().equals(ENSEMBL_ID);
+        }
+
+        assert protein.getDbRef().getGeneWiki().equals("Cytochrome_c");
     }
 
     @Test
     public void testAddProtein() throws Exception {
         ProteinUpdate.addProtein(ProteinUpdate.getProteinFromUniprot(UNIPROT_ID));
-
-        // TODO Verify add
+        assert DAOObject.getInstance().getProteinDAO().searchByID(UNIPROT_ID) != null;
     }
 
     @Test
