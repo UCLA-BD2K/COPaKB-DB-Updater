@@ -192,6 +192,9 @@ public class ProteinUpdate {
         }
         reader.close();
 
+        if(sb.length() <= 1)
+            return null;
+
         // Parse XML
         Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
                 .parse(new InputSource(new StringReader(sb.toString())));
@@ -527,8 +530,36 @@ public class ProteinUpdate {
 
             DAOObject.getInstance().getProteinDAO().addProteinHistory(proteinHistory);
 
-            DAOObject.getInstance().getProteinDAO().deleteProteinCurrent(protein_acc);
-            return 2;
+            List<SpectrumProtein> spectrumProteins = DAOObject.getInstance().getProteinDAO().searchSpectrumProteins(existingProtein);
+            if(spectrumProteins.size() > 0) {
+                for (SpectrumProtein spectrumProtein : spectrumProteins) { // add to spectrum protein history before deleting!
+                    SpectrumProteinHistory spectrumProteinHistory = new SpectrumProteinHistory();
+
+                    spectrumProteinHistory.setSpectrumProtein_id(spectrumProtein.getSpectrumProtein_id());
+                    spectrumProteinHistory.setSpectrum_id(spectrumProtein.getSpectrum().getSpectrum_id());
+                    spectrumProteinHistory.setVersion(version);
+                    spectrumProteinHistory.setProtein_acc(spectrumProtein.getProtein().getProtein_acc());
+                    spectrumProteinHistory.setFeature_peptide(spectrumProtein.isFeature_peptide());
+                    spectrumProteinHistory.setSpecies_unique(spectrumProtein.isSpecies_unique());
+                    spectrumProteinHistory.setLibraryModule(spectrumProtein.getLibraryModule().getMod_id());
+                    spectrumProteinHistory.setLocation(spectrumProtein.getLocation());
+                    spectrumProteinHistory.setPrevAA(spectrumProtein.getPrevAA());
+                    spectrumProteinHistory.setNextAA(spectrumProtein.getNextAA());
+                    spectrumProteinHistory.setDelete_date(new Date());
+
+                    DAOObject.getInstance().getProteinDAO().addSpectrumProteinHistory(spectrumProteinHistory);
+
+                    DAOObject.getInstance().getProteinDAO().deleteSpectrumProtein(spectrumProtein.getSpectrumProtein_id());
+                }
+            }
+
+            // delete protein current entry and all affiliated entries (DBRef, Gene, GO Terms, SpectrumProtein)
+            if(DAOObject.getInstance().getProteinDAO().deleteProteinCurrent(protein_acc))
+                return 2;
+            else {
+                System.out.println("Could not delete " + protein_acc);
+                return -1;
+            }
         }
 
         // if did not exist in db but now exists on uniprot, do nothing

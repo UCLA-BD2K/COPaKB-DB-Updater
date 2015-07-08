@@ -200,21 +200,23 @@ public class SpectraUpdate {
                     try {
                         // Get and add protein if not in database
                         prot = ProteinUpdate.getProteinFromUniprot(token);
-                        DAOObject.proteinDAO.addProteinCurrent(prot);
+                        if(prot != null)
+                            DAOObject.proteinDAO.addProteinCurrent(prot);
                     } catch (IOException | ParserConfigurationException | SAXException e) {
                         e.printStackTrace();
                     }
                 }
 
-                assert prot != null;
+                if (prot == null) {
+                    System.out.println("Could not add SpectrumProtein: " + token);
+                    continue;
+                }
                 protSeq = prot.getSequence();
 
                 String tempPtmSeq = ptm_sequence.replaceAll("[^A-Za-z]", "");
                 loc = protSeq.indexOf(tempPtmSeq);
 
-                prot  = new ProteinCurrent();
-                prot.setProtein_acc(token);
-                sp.setProtein_acc(prot.getProtein_acc());
+                sp.setProtein(DAOObject.getInstance().getProteinDAO().searchByID(prot.getProtein_acc()));
 
                 sp.setLocation(loc);
                 sp.setLibraryModule(tempLibMod);
@@ -617,10 +619,10 @@ public class SpectraUpdate {
             System.out.println(token);
         }*/
 
-        //update("./src/main/resources/mouse_heart_nuclei.copa", -1, "LTQ", "Trypsin");
+        update("./src/main/resources/mouse_heart_nuclei.copa", -1, "LTQ", "Trypsin");
 
         //parsePtmSequence("(42.0106)VNKVIEINPYLLGTM(15.9949)SGCAADCQYWER");
 
-        addPtm_Types();
+        //addPtm_Types();
     }
 }
