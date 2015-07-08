@@ -46,16 +46,27 @@ public class ProteinUpdate {
                     // Get UniProt ID from header line
                     String uniprotID = line.substring(4, line.indexOf("|", 4));
 
-                    // Skip if already in database
-                    if (DAOObject.getInstance().getProteinDAO().searchByID(uniprotID) != null) {
-                        System.out.println(uniprotID + " already exists.");
-                        continue;
-                    }
-
                     // Get protein
                     ProteinCurrent protein;
                     try {
                         protein = getProteinFromUniprot(uniprotID);
+
+                        int check = checkAndUpdateHistories(uniprotID, protein);
+
+                        if (check == 0) { // already exists and no changes
+                            System.out.println(uniprotID + " is up to date.");
+                        }
+                        if(check == 1) { // updated protein and protein history
+                            System.out.println(uniprotID + " was updated.");
+                        }
+                        if(check == 2) { // exists in db but was deleted from uniprot
+                            System.out.println(uniprotID + " was deleted.");
+                        }
+                        if(check != -1)
+                            continue;
+
+                        // else if check failed or protein now exists and didn't before, proceed to add as normal
+
                     } catch (IOException | SAXException | ParserConfigurationException e) {
                         protein = null;
                     }
@@ -101,16 +112,26 @@ public class ProteinUpdate {
             while (sc.hasNextLine()) {
                 String uniprotID = sc.nextLine();
 
-                // Skip if already in database
-                if (DAOObject.getInstance().getProteinDAO().searchByID(uniprotID) != null) {
-                    System.out.println(uniprotID + " already exists.");
-                    continue;
-                }
-
                 // Get protein
                 ProteinCurrent protein;
                 try {
                     protein = getProteinFromUniprot(uniprotID);
+
+                    int check = checkAndUpdateHistories(uniprotID, protein);
+
+                    if (check == 0) { // already exists and no changes
+                        System.out.println(uniprotID + " is up to date.");
+                    }
+                    if(check == 1) { // updated protein and protein history
+                        System.out.println(uniprotID + " was updated.");
+                    }
+                    if(check == 2) { // exists in db but was deleted from uniprot
+                        System.out.println(uniprotID + " was deleted.");
+                    }
+                    if(check != -1)
+                        continue;
+
+                    // else if check failed or protein now exists and didn't before, proceed to add as normal
                 } catch (IOException | SAXException | ParserConfigurationException e) {
                     protein = null;
                 }
@@ -345,6 +366,11 @@ public class ProteinUpdate {
                     .getTextContent();
         }
         species = DAOObject.getInstance().getProteinDAO().searchSpecies(speciesName);
+        // If cannot find scientific or common name in database, add common name
+        if(species == null) {
+            Species sp = new Species(0, speciesName, null, null);
+            DAOObject.getInstance().getProteinDAO().addSpecies(sp);
+        }
         protein.setSpecies(species);
 
         // Get gene
@@ -446,5 +472,67 @@ public class ProteinUpdate {
         }
 
         return gene;
+    }
+
+    /**
+     * Called if protein to be updated or deleted from database, otherwise does nothing.
+     * If any updates or deletions happen, then the protein history table will also be updated.
+     * @param protein_acc accession id of protein to be checked in the database
+     * @param p the updated protein current object. if null, then assumed it has been deleted from uniprot
+     *          and will also be deleted from the database; if p is defined and there is a valid entry
+     *          with the given protein_acc, then the entry will be updated
+     * @return 0 if no change, 1 if exists and has been updated, 2 if deleted
+     */
+    public static int checkAndUpdateHistories(String protein_acc, ProteinCurrent p) {
+        ProteinCurrent existingProtein = DAOObject.getInstance().getProteinDAO().searchByID(protein_acc); // add param
+
+        Version version = new Version();
+        version.setVersion(DAOObject.getInstance().getProteinDAO().searchLatestVersion().getVersion() - 1); // set it to previous versions
+        version.setDescription("Update"); // todo: change the description values
+        version.setDate(new Date());
+
+        // if exists on uniprot and db, then update the object and change protein history
+        if (existingProtein != null && p != null) {
+            if(!DAOObject.getInstance().getProteinDAO().compareProteinCurrent(p, existingProtein)) { // different than current entry in db
+                // create and add protein history entry
+                ProteinHistory proteinHistory = new ProteinHistory();
+                proteinHistory.setProtein_acc(protein_acc);
+                proteinHistory.setProtein_name(p.getProtein_name());
+                proteinHistory.setChromosome(p.getChromosome());
+                proteinHistory.setMolecular_weight(p.getMolecular_weight());
+                proteinHistory.setSequence(p.getSequence());
+                proteinHistory.setVersion(version);
+                proteinHistory.setDelete_date(new Date());
+
+                DAOObject.getInstance().getProteinDAO().addProteinHistory(proteinHistory);
+
+                // update the protein current entry
+                DAOObject.getInstance().getProteinDAO().updateProteinCurrent(p.getProtein_acc(), p);
+                return 1;
+            }
+            else { // same as current entry in db
+                return 0;
+            }
+        }
+        // if exists in db but no longer exists on uniprot
+        if(existingProtein != null && p == null) {
+            ProteinHistory proteinHistory = new ProteinHistory();
+            proteinHistory.setProtein_acc(protein_acc);
+            proteinHistory.setProtein_name(existingProtein.getProtein_name());
+            proteinHistory.setChromosome(existingProtein.getChromosome());
+            proteinHistory.setMolecular_weight(existingProtein.getMolecular_weight());
+            proteinHistory.setSequence(existingProtein.getSequence());
+            proteinHistory.setVersion(version);
+            proteinHistory.setDelete_date(new Date());
+
+            DAOObject.getInstance().getProteinDAO().addProteinHistory(proteinHistory);
+
+            DAOObject.getInstance().getProteinDAO().deleteProteinCurrent(protein_acc);
+            return 2;
+        }
+
+        // if did not exist in db but now exists on uniprot, do nothing
+
+        return -1; // if failed and did nothing
     }
 }

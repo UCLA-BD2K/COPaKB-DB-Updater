@@ -230,7 +230,7 @@ public class SpectraUpdate {
 
 
         }
-        //todo: for later (after all modules are inserted)...calculate unique_peptide, feature_peptide, and fdr
+        //todo: for later (after all modules are inserted)...calculate unique_peptide, feature_peptide
     }
 
     private void updateUniqueAndFeatureStates() {
@@ -608,5 +608,19 @@ public class SpectraUpdate {
             tempPtmType = new PTM_type(i, mod, res, mass, null);
             peptideDAO.addPtmType(tempPtmType);
         }
+    }
+
+    public static void main(String[] args) {
+        /*String s = "p1;";
+        String[] tokens = s.split(";");
+        for (String token : tokens) {
+            System.out.println(token);
+        }*/
+
+        //update("./src/main/resources/mouse_heart_nuclei.copa", -1, "LTQ", "Trypsin");
+
+        //parsePtmSequence("(42.0106)VNKVIEINPYLLGTM(15.9949)SGCAADCQYWER");
+
+        addPtm_Types();
     }
 }

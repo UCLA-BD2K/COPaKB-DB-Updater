@@ -79,9 +79,9 @@ public class DiseaseUpdate {
 
     /**
      * Extracts DiseaseGene information from omim.org
-     * @param disease
-     * @param gene
-     * @return
+     * @param disease disease object that is used to find the DiseaseGene object
+     * @param gene gene object that is used to find the DiseaseGene object
+     * @return defined DiseaseGene object that is mapped by the combination of the disease and gene parameters
      */
     public static DiseaseGene getDiseaseGene(Disease disease, Gene gene) {
         DiseaseGene diseaseGene = new DiseaseGene();
@@ -115,8 +115,8 @@ public class DiseaseUpdate {
 
     /**
      * Extracts Disease information from omim.org
-     * @param gene
-     * @return
+     * @param gene gene symbol
+     * @return list of diseases relevant to the gene specified
      */
     public static List<Disease> getDiseases(String gene){
         ArrayList<Disease> diseases = new ArrayList<Disease>(0);
