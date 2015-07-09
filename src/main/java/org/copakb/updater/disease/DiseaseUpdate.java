@@ -150,9 +150,7 @@ public class DiseaseUpdate {
 
                     if (phenotypeMap.has("phenotype")) {
                         // format the name
-                        // todo: not sure if the brackets mean something and should be kept?
                         String name = phenotypeMap.getString("phenotype");
-                        name.replaceAll("[^A-Za-z0-9-, ]", "");
                         disease.setName(name);
                     }
                     else {

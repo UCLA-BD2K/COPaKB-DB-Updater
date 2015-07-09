@@ -13,9 +13,7 @@ import uk.ac.ebi.kraken.uuw.services.remoting.UniProtJAPI;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.*;
 import java.lang.reflect.Array;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -96,7 +94,7 @@ public class SpectraUpdate {
 
         CopaParser cp = new CopaParser(file);
         HashMap copaEntry = null;
-        while(cp.processEntry()>0) {
+        while(cp.processEntry()>=0) {
 //            for(Object s : cp.getCurrentEntry().values())
 //                System.out.println(s.toString());
             copaEntry = cp.getCurrentEntry();
@@ -161,12 +159,23 @@ public class SpectraUpdate {
             Peptide tempPep = peptideDAO.searchBySequence(ptm_sequence);
             if(tempPep == null)
             {
-                tempPep = new Peptide(ptm_sequence, 0.01, 15);
+                String seq = ptm_sequence.replaceAll("[()0-9]", "");
+                tempPep = new Peptide(ptm_sequence, calcMWandPrecursor(ptm_sequence, 1)[0], seq.length());
                 peptideDAO.addPeptide(tempPep);
             }
 
             spectrum.setPeptide(tempPep);
-            int specNum = peptideDAO.addSpectrum(spectrum);
+            int specNum;
+
+            // before adding, check if spectrum exists already
+            Spectrum dbSpectrum = DAOObject.getInstance().getPeptideDAO().searchSpectrum(ptm_sequence, mod_id, charge);
+            if(dbSpectrum == null) {
+                // not yet in database or if different values in database
+                specNum = peptideDAO.addSpectrum(spectrum);
+            }
+            else {
+                specNum = dbSpectrum.getSpectrum_id();
+            }
 
             // create and save spectrum files; currently hardcoded the location
             new File(SPECTRUM_OUTPUT_PATH).mkdir();
@@ -193,15 +202,46 @@ public class SpectraUpdate {
             int loc;
 
             String[] tokens = proteins.split(";");
-            for (String token : tokens) {
-                System.out.println("Token " + token);
+
+            // todo: spectrum protein update testing to be done
+
+            // check referenced proteins in copa files and if relevant spectrum protein
+            // objects exist in the database
+            Collection<String> tokensInFile = new ArrayList(Arrays.asList(tokens));
+
+            Spectrum tempSpecInDb = DAOObject.getInstance().getPeptideDAO().searchSpectrum(ptm_sequence, mod_id, charge);
+            List<SpectrumProtein> tempTokensInDb = DAOObject.getInstance().getProteinDAO().searchSpectrumProteins(tempSpecInDb);
+
+            List<String> tokensToAdd = null;
+            List<String> tokensToDelete = null;
+
+            if(tempTokensInDb != null) { // if there are spectrum proteins in the database, check if they need to be deleted
+                // convert matching spectrums to just get the list of uniprot ids
+                ArrayList<String> tokensDelete = new ArrayList<>();
+                for(SpectrumProtein spectrumProtein : tempTokensInDb) {
+                    tokensDelete.add(spectrumProtein.getProtein().getProtein_acc());
+                }
+                Collection<String> tokensInDb = new ArrayList(tokensDelete);
+
+                tokensToAdd = new ArrayList<String>(tokensInFile);
+                tokensToDelete = new ArrayList<String>(tokensInDb);
+
+                tokensToAdd.removeAll(tokensInDb);
+                tokensToDelete.removeAll(tokensInFile);
+            }
+            else { // if nothing in database, then just add all uniprot ids
+                tokensToAdd = new ArrayList(Arrays.asList(tokens));
+            }
+
+            // add the spectrum proteins objects for each protein referenced (but not yet added)
+            for (String token : tokensToAdd) {
                 prot = proteinDAO.searchByID(token);
                 if (prot == null) {
                     try {
                         // Get and add protein if not in database
                         prot = ProteinUpdate.getProteinFromUniprot(token);
                         if(prot != null)
-                            DAOObject.proteinDAO.addProteinCurrent(prot);
+                            DAOObject.getInstance().getProteinDAO().addProteinCurrent(prot);
                     } catch (IOException | ParserConfigurationException | SAXException e) {
                         e.printStackTrace();
                     }
@@ -226,10 +266,44 @@ public class SpectraUpdate {
                 sp.setSpectrum(tempSpec);
                 sp.setPeptide(tempPep);
                 proteinDAO.addSpectrumProtein(sp);
+                System.out.println("Added: " + sp.getProtein().getProtein_acc());
             }
-            //need to get spectrum_id
-            //may need to add the spectrum entry to the database first to get the spectrum_id
 
+            if(tokensToDelete == null)
+                continue;
+
+            // delete all spectrum protein objects that are in database but no longer in COPA file
+            for(String token : tokensToDelete) {
+
+                // get persistent entities to be able to search & delete
+                ProteinCurrent existingProtein = DAOObject.getInstance().getProteinDAO().searchByID(token);
+                spectrum = DAOObject.getInstance().getPeptideDAO().searchSpectrum(spectrum.getPtm_sequence(), spectrum.getModule().getMod_id(), spectrum.getCharge_state());
+
+                // get latest version
+                Version version = new Version();
+                version.setVersion(DAOObject.getInstance().getProteinDAO().searchLatestVersion().getVersion() - 1); // set it to previous versions
+                version.setDescription("Update"); // todo: change the description values
+                version.setDate(new Date());
+
+                SpectrumProtein spectrumProtein = DAOObject.getInstance().getProteinDAO().searchSpectrumProtein(spectrum, existingProtein);
+                SpectrumProteinHistory spectrumProteinHistory = new SpectrumProteinHistory();
+                spectrumProteinHistory.setSpectrumProtein_id(spectrumProtein.getSpectrumProtein_id());
+                spectrumProteinHistory.setSpectrum_id(spectrumProtein.getSpectrum().getSpectrum_id());
+                spectrumProteinHistory.setVersion(version);
+                spectrumProteinHistory.setProtein_acc(spectrumProtein.getProtein().getProtein_acc());
+                spectrumProteinHistory.setFeature_peptide(spectrumProtein.isFeature_peptide());
+                spectrumProteinHistory.setSpecies_unique(spectrumProtein.isSpecies_unique());
+                spectrumProteinHistory.setLibraryModule(spectrumProtein.getLibraryModule().getMod_id());
+                spectrumProteinHistory.setLocation(spectrumProtein.getLocation());
+                spectrumProteinHistory.setPrevAA(spectrumProtein.getPrevAA());
+                spectrumProteinHistory.setNextAA(spectrumProtein.getNextAA());
+                spectrumProteinHistory.setDelete_date(new Date());
+
+                // add to spectrum protein history, then delete
+                DAOObject.getInstance().getProteinDAO().addSpectrumProteinHistory(spectrumProteinHistory);
+                DAOObject.getInstance().getProteinDAO().deleteSpectrumProtein(spectrumProtein.getSpectrumProtein_id());
+                System.out.println("Deleted: " + spectrumProtein.getProtein().getProtein_acc());
+            }
 
         }
         //todo: for later (after all modules are inserted)...calculate unique_peptide, feature_peptide
@@ -619,7 +693,7 @@ public class SpectraUpdate {
             System.out.println(token);
         }*/
 
-        update("./src/main/resources/mouse_heart_nuclei.copa", -1, "LTQ", "Trypsin");
+        update("./src/main/resources/mouse_heart_test_mitochondria.copa", -1, "LTQ", "Trypsin");
 
         //parsePtmSequence("(42.0106)VNKVIEINPYLLGTM(15.9949)SGCAADCQYWER");
 
