@@ -168,13 +168,13 @@ public class SpectraUpdate {
             int specNum;
 
             // before adding, check if spectrum exists already
-            Spectrum dbSpectrum = DAOObject.getInstance().getPeptideDAO().searchSpectrum(ptm_sequence, mod_id, charge).get(0);
-            if(dbSpectrum == null) {
+            List<Spectrum> dbSpectrums = DAOObject.getInstance().getPeptideDAO().searchSpectrum(ptm_sequence, mod_id, charge);
+            if(dbSpectrums == null) {
                 // not yet in database or if different values in database
                 specNum = peptideDAO.addSpectrum(spectrum);
             }
             else {
-                specNum = dbSpectrum.getSpectrum_id();
+                specNum = dbSpectrums.get(0).getSpectrum_id();
             }
 
             // create and save spectrum files; currently hardcoded the location
@@ -277,7 +277,11 @@ public class SpectraUpdate {
 
                 // get persistent entities to be able to search & delete
                 ProteinCurrent existingProtein = DAOObject.getInstance().getProteinDAO().searchByID(token);
-                spectrum = DAOObject.getInstance().getPeptideDAO().searchSpectrum(spectrum.getPtm_sequence(), spectrum.getModule().getMod_id(), spectrum.getCharge_state()).get(0);
+                List<Spectrum> spectrums = DAOObject.getInstance().getPeptideDAO().searchSpectrum(spectrum.getPtm_sequence(), spectrum.getModule().getMod_id(), spectrum.getCharge_state());
+                if(spectrum == null)
+                    continue;
+
+                spectrum = spectrums.get(0);
 
                 // get latest version
                 Version version = new Version();
