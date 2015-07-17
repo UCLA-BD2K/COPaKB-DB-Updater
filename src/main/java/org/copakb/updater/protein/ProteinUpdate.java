@@ -197,6 +197,8 @@ public class ProteinUpdate {
             return null;
         }
 
+        ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
+
         // Parse XML
         Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
                 .parse(new InputSource(new StringReader(sb.toString())));
@@ -363,16 +365,16 @@ public class ProteinUpdate {
                 .getElementsByTagName("name");
         // Check scientific name first
         String speciesName = speciesNames.item(0).getTextContent(); // First species name should be scientific
-        Species species = DAOObject.getInstance().getProteinDAO().searchSpecies(speciesName);
+        Species species = proteinDAO.searchSpecies(speciesName);
         // Check common name if necessary
         if (species == null && speciesNames.getLength() > 1) {
             speciesName = speciesNames.item(1).getTextContent(); // Second species name should be common
         }
-        species = DAOObject.getInstance().getProteinDAO().searchSpecies(speciesName);
+        species = proteinDAO.searchSpecies(speciesName);
         // If neither scientific or common name are in the database, add the common name
         if (species == null) {
-            Species sp = new Species(0, speciesName, null, null);
-            DAOObject.getInstance().getProteinDAO().addSpecies(sp);
+            proteinDAO.addSpecies(new Species(0, speciesName));
+            species = proteinDAO.searchSpecies(speciesName);
         }
         protein.setSpecies(species);
 
