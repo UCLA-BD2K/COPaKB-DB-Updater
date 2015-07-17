@@ -340,8 +340,7 @@ public class ProteinUpdate {
         dbRef.setPdb(String.join("\n", pdb));
         dbRef.setReactome(String.join("\n", reactome));
         dbRef.setGeneWiki(String.join("\n", geneWiki));
-        dbRef.setProtein_acc(protein.getProtein_acc());
-        dbRef.setProteinCurrent(protein);
+        dbRef.setProtein(protein);
         protein.setDbRef(dbRef);
 
         // Get keywords
