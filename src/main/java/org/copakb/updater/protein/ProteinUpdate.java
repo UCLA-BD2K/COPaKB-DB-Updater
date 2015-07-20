@@ -420,11 +420,9 @@ public class ProteinUpdate {
         ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
         // Attempt to add the protein
         String result = proteinDAO.addProteinCurrent(protein);
-        String dbResult = proteinDAO.addDbRef(protein.getDbRef());
 
         // Process result
-        return !(result.isEmpty() || dbResult.isEmpty() || result.equals("Failed"));
-
+        return !(result.isEmpty() || result.equals("Failed"));
     }
 
     /**
