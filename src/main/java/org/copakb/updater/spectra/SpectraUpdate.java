@@ -8,10 +8,7 @@ import org.copakb.updater.protein.ProteinUpdate;
 import org.xml.sax.SAXException;
 
 import javax.xml.parsers.ParserConfigurationException;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
 
 /**
@@ -41,10 +38,10 @@ public class SpectraUpdate {
         }
         if (mod_id == -1 || tempLibMod == null) {
             String[] shortFileName = file.split("/");
-            String shortName = shortFileName[shortFileName.length - 1];
-            shortName = shortName.substring(0, shortName.length() - 5);
+            String shortName = shortFileName[shortFileName.length-1];
+            shortName = shortName.substring(0, shortName.length()-5);
             String[] parsedShortName = shortName.split("_");
-            String parseShortName = parsedShortName[parsedShortName.length - 1];
+            String parseShortName = parsedShortName[parsedShortName.length-1];
 
             try { // last section of file name is an integer, truncate
                 organelle = parsedShortName[parsedShortName.length - 2];
@@ -64,9 +61,9 @@ public class SpectraUpdate {
 
             String species = parsedShortName[0];
             // match to formatted species name
-            species = species.substring(0, 1).toUpperCase() + species.substring(1).toLowerCase();
+            species = species.substring(0,1).toUpperCase() + species.substring(1).toLowerCase();
             Species tempSpecies = proteinDAO.searchSpecies(species);
-            if (tempSpecies == null) {
+            if(tempSpecies == null) {
                 tempSpecies = new Species(0, species, null, null);
                 proteinDAO.addSpecies(tempSpecies);
             }
@@ -119,11 +116,9 @@ public class SpectraUpdate {
                 continue; // skip, don't add this peptide if reverse
             }
 
-            // populate peptide object
-            Peptide peptide = new Peptide();
+            // check peptide object
             String peptide_sequence = extractPeptide(ptm_sequence);
-            peptide.setPeptide_sequence(peptide_sequence);
-            peptide.setSequence_length(peptide_sequence.length());
+            Peptide peptide = DAOObject.getInstance().getPeptideDAO().searchBySequence(peptide_sequence);
 
             // populate spectrum object
             Spectrum spectrum = new Spectrum();
@@ -135,27 +130,27 @@ public class SpectraUpdate {
             spectrum.setZscore(Double.parseDouble((String) entry.get("ZSCORE")));
             spectrum.setPrecursor_mz(Double.parseDouble((String) entry.get("MZ")));
             spectrum.setRawfile_id((String) entry.get("SPECTRUMFILE"));
-            double fdr = ((double) reverseCounter) / ((double) specNumCounter);
+            double fdr = ((double)reverseCounter)/((double)specNumCounter);
             spectrum.setFdr(fdr);
 
             double[] arr = calcMWandPrecursor(ptm_sequence, charge);
             spectrum.setTh_precursor_mz(arr[1]);
-            peptide.setMolecular_weight(arr[0]);
 
-            spectrum.setPtm(peptideDAO.searchPtmType(parsePtmSequence(ptm_sequence)));
+            // populate peptide object if not already found in database
+            if(peptide == null) {
+                peptide = new Peptide();
+                peptide.setPeptide_sequence(peptide_sequence);
+                peptide.setSequence_length(peptide_sequence.length());
+                peptide.setMolecular_weight(arr[0]);
+            }
+
+            PTM_type tempType = peptideDAO.searchPtmType(parsePtmSequence(ptm_sequence));
+            spectrum.setPtm(tempType);
 
             LibraryModule tempLibMod = peptideDAO.searchLibraryModuleWithId(mod_id);
             spectrum.setModule(tempLibMod);
 
-            // temp values
-            Peptide tempPep = peptideDAO.searchBySequence(ptm_sequence);
-            if (tempPep == null) {
-                String seq = ptm_sequence.replaceAll("[^A-Za-z]", "");
-                tempPep = new Peptide(ptm_sequence, calcMWandPrecursor(ptm_sequence, 1)[0], seq.length());
-                peptideDAO.addPeptide(tempPep);
-            }
-
-            spectrum.setPeptide(tempPep);
+            spectrum.setPeptide(peptide);
             int specNum;
 
             // before adding, check if spectrum exists already
@@ -194,8 +189,11 @@ public class SpectraUpdate {
             // objects exist in the database
             ArrayList<String> tokensInFile = new ArrayList<>(Arrays.asList(tokens));
 
-            Spectrum tempSpecInDb = peptideDAO.searchSpectrum(ptm_sequence, mod_id, charge).get(0);
-            List<SpectrumProtein> tempTokensInDb = proteinDAO.searchSpectrumProteins(tempSpecInDb);
+            List<Spectrum> tempSpecList = DAOObject.getInstance().getPeptideDAO().searchSpectrum(ptm_sequence, mod_id, charge);
+            if(tempSpecList.isEmpty())
+                continue;
+            Spectrum tempSpecInDb = tempSpecList.get(0);
+            List<SpectrumProtein> tempTokensInDb = DAOObject.getInstance().getProteinDAO().searchSpectrumProteins(tempSpecInDb);
 
             List<String> tokensToAdd;
             List<String> tokensToDelete = null;
@@ -230,6 +228,17 @@ public class SpectraUpdate {
                         if (prot != null) {
                             proteinDAO.addProteinCurrent(prot);
                         }
+                        if(prot != null) {
+                            //prot.setDbRef(null);
+                            try {
+                                DAOObject.getInstance().getProteinDAO().addProteinCurrent(prot);
+                            }
+                            catch (Exception e) {
+                                System.out.println("Could not add protein: " + token);
+                                e.printStackTrace();
+                            }
+                            //DAOObject.getInstance().getProteinDAO().addDbRef(prot.getDbRef());
+                        }
                     } catch (IOException | ParserConfigurationException | SAXException e) {
                         e.printStackTrace();
                     }
@@ -253,9 +262,16 @@ public class SpectraUpdate {
                         spectrum.getPtm_sequence(), spectrum.getModule().getMod_id(), spectrum.getCharge_state())
                         .get(0);
                 sp.setSpectrum(tempSpec);
-                sp.setPeptide(tempPep);
-                proteinDAO.addSpectrumProtein(sp);
-                System.out.println("Added: " + sp.getProtein().getProtein_acc());
+                sp.setPeptide(peptide);
+                try {
+                    proteinDAO.addSpectrumProtein(sp);
+                    System.out.println("Added: " + sp.getProtein().getProtein_acc());
+                }
+                catch (Exception e)
+                {
+                    System.out.println("Could not add SpectrumProtein: " + token);
+                    e.printStackTrace();
+                }
             }
 
             if (tokensToDelete == null)
@@ -435,11 +451,26 @@ public class SpectraUpdate {
         if (start < len) {
             peptide += ptm_sequence.substring(start, len);
         }
-
         return peptide;
     }
 
-    private static double[] calcMWandPrecursor(String sequence, double charge) {
+
+    private static void storeSpectraInFile(String spectra, String filename){
+        Writer writer = null;
+
+        try {
+            writer = new BufferedWriter(new OutputStreamWriter(
+                    new FileOutputStream(filename), "utf-8"));
+            writer.write(spectra);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            // report
+        } finally {
+            try {writer.close();} catch (Exception ex) {/*ignore*/}
+        }
+    }
+
+    private static double[] calcMWandPrecursor(String sequence, double charge){
 
         double result[] = {0, 0};
         // initialize molecular weight and theoretical precursor
@@ -622,5 +653,103 @@ public class SpectraUpdate {
 
     public static boolean withinRange(double num, double refNum, double range) {
         return (num <= (refNum + range)) && (num >= (refNum - range));
+    }
+
+    /**
+     * temporary method for adding ptm types
+     */
+    public static void addPtm_Types() {
+//            1	Carbamidomethylation	C,K,H	57.02000
+//            2	Acetylation	K,N-term	42.01000
+//            4	Oxidation	M	15.99000
+//            8	Phosphorylation	S,T	79.97000
+//            16	Succinylation	K	100.01860
+//            32	Propionamide	C	71.03712
+//            64	Pyro-carbamidomethyl	C	39.99492
+//            128	Pyro-glu	E	-17.03000
+
+        PeptideDAO peptideDAO = DAOObject.getInstance().getPeptideDAO();
+        HashMap<Integer, Double> map = new HashMap<Integer, Double>(8);
+        map.put(1, 57.02000);
+        map.put(2, 42.01000);
+        map.put(4, 15.99000);
+        map.put(8, 79.97000);
+        map.put(16, 100.01860);
+        map.put(32, 71.03712);
+        map.put(64, 39.99492);
+        map.put(128, -17.03000);
+
+        HashMap<Integer, String> map2 = new HashMap<Integer, String>(8);
+        map2.put(1, "Carbamidomethylation;");
+        map2.put(2, "Acetylation;");
+        map2.put(4, "Oxidation;");
+        map2.put(8, "Phosphorylation;");
+        map2.put(16, "Succinylation;");
+        map2.put(32, "Propionamide;");
+        map2.put(64, "Pyro-carbamidomethyl;");
+        map2.put(128, "Pyro-glu;");
+
+        HashMap<Integer, String> map3 = new HashMap<Integer, String>(8);
+        map3.put(1, "C,K,H;");
+        map3.put(2, "K,N-term;");
+        map3.put(4, "M;");
+        map3.put(8, "S,T;");
+        map3.put(16, "K;");
+        map3.put(32, "C;");
+        map3.put(64, "C;");
+        map3.put(128, "E;");
+
+        String binary = "";
+        PTM_type tempPtmType = null;
+        String mod = "";
+        String res = "";
+        double mass = 0.0;
+        int counter = 0;
+        int key = 0;
+        for(int i = 1; i <= 255; i++) {
+            mod = "";
+            res = "";
+            mass = 0.0;
+            counter = 0;
+            key = 0;
+
+            binary = Integer.toString(i,2);
+            System.out.println(binary);
+            char[] arr = binary.toCharArray();
+            for(int x = arr.length-1; x >= 0; x--) {
+                char a = arr[x];
+                if(a == '1') {
+                    key = (int) Math.pow(2, counter);
+                    System.out.println(key);
+                    mod += map2.get(key);
+                    res += map3.get(key);
+                    mass += map.get(key);
+                }
+                counter++;
+            }
+            mod = mod.substring(0, mod.length()-1);
+            res = res.substring(0, res.length()-1);
+
+            tempPtmType = new PTM_type(i, mod, res, mass, null);
+            peptideDAO.addPtmType(tempPtmType);
+        }
+    }
+
+    public static void main(String[] args) {
+        /*String s = "p1;";
+        String[] tokens = s.split(";");
+        for (String token : tokens) {
+            System.out.println(token);
+        }*/
+
+        update("./src/main/resources/copa_to_do/Human_Adipocyte.copa", -1, "LTQ", "Trypsin");
+
+        //updateUniqueStates();
+
+        //updateFeatureStates();
+
+        //parsePtmSequence("(42.0106)VNKVIEINPYLLGTM(15.9949)SGCAADCQYWER");
+
+        //addPtm_Types();
     }
 }

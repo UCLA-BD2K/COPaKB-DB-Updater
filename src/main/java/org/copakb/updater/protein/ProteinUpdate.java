@@ -184,12 +184,15 @@ public class ProteinUpdate {
         }
 
         // Get content
-        Reader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
+        BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
         StringBuilder sb = new StringBuilder();
         char[] buffer = new char[CHAR_BUFFER_SIZE];
         int read;
-        while ((read = reader.read(buffer, 0, buffer.length)) > 0) {
-            sb.append(buffer, 0, read);
+        String temp = "";
+        //while ((read = reader.read(buffer, 0, buffer.length)) > 0) {
+        while ((temp = reader.readLine()) != null) {
+            //sb.append(buffer, 0, read);
+            sb.append(temp);
         }
         reader.close();
 
@@ -340,7 +343,7 @@ public class ProteinUpdate {
         dbRef.setPdb(String.join("\n", pdb));
         dbRef.setReactome(String.join("\n", reactome));
         dbRef.setGeneWiki(String.join("\n", geneWiki));
-        dbRef.setProtein(protein);
+        dbRef.setProtein_acc(protein.getProtein_acc());
         protein.setDbRef(dbRef);
 
         // Get keywords
@@ -417,9 +420,10 @@ public class ProteinUpdate {
         ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
         // Attempt to add the protein
         String result = proteinDAO.addProteinCurrent(protein);
+        String dbResult = proteinDAO.addDbRef(protein.getDbRef());
 
         // Process result
-        return !(result.isEmpty() || result.equals("Failed"));
+        return !(result.isEmpty() || dbResult.isEmpty() || result.equals("Failed"));
 
     }
 
