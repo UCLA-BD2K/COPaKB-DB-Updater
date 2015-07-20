@@ -287,6 +287,7 @@ public class ProteinUpdate {
         }
 
         // Get dbReferences
+        Set<Gene> genes = new HashSet<>();
         Set<GoTerms> goTerms = new HashSet<>();
         DBRef dbRef = new DBRef();
         List<String> pdb = new ArrayList<>();
@@ -300,7 +301,19 @@ public class ProteinUpdate {
                 continue;
             }
 
-            switch (dbRefElement.getAttribute("type")) {
+            String dbRefType = dbRefElement.getAttribute("type");
+
+            // Get genes
+            if (dbRefType.startsWith("Ensembl") || dbRefType.startsWith("WormBase")) {
+                Element property = (Element) dbRefElement.getElementsByTagName("property").item(1);
+                if (property != null) {
+                    genes.add(getGeneFromEnsembl(property.getAttribute("value")));
+                }
+
+                continue;
+            }
+
+            switch (dbRefType) {
                 case "PDB":
                     pdb.add(dbRefElement.getAttribute("id"));
                     break;
@@ -322,7 +335,6 @@ public class ProteinUpdate {
                     goTerm.setGO_accession(
                             Integer.valueOf(dbRefElement.getAttribute("id")
                                     .split(":")[1])); // Ignore the GO: prefix
-
                     goTerm.setTerms(((Element) dbRefElement
                             .getElementsByTagName("property").item(0))
                             .getAttribute("value"));
@@ -339,6 +351,7 @@ public class ProteinUpdate {
                     break;
             }
         }
+        protein.setGenes(genes);
         protein.setGoTerms(goTerms);
         dbRef.setPdb(String.join("\n", pdb));
         dbRef.setReactome(String.join("\n", reactome));
@@ -379,33 +392,6 @@ public class ProteinUpdate {
             species = proteinDAO.searchSpecies(speciesName);
         }
         protein.setSpecies(species);
-
-        // Get gene
-        Set<String> ensemblIDs = new HashSet<>();
-        NodeList dbReferences = proteinElement.getElementsByTagName("dbReference");
-        for (int dbRefIndex = 0; dbRefIndex < dbReferences.getLength(); dbRefIndex++) {
-            Element dbRefElement = (Element) dbReferences.item(dbRefIndex);
-            String dbRefType = dbRefElement.getAttribute("type");
-            if (dbRefType.startsWith("Ensembl") || dbRefType.startsWith("WormBase")) {
-                Element property = (Element) dbRefElement.getElementsByTagName("property").item(1);
-                if (property != null) {
-                    ensemblIDs.add(property.getAttribute("value"));
-                }
-            }
-        }
-        Set<Gene> genes = new HashSet<>();
-        Gene gene = new Gene();
-        if (proteinElement.getElementsByTagName("gene").getLength() >= 1) {
-            gene.setGene_name(((Element) proteinElement
-                    .getElementsByTagName("gene").item(0))
-                    .getElementsByTagName("name").item(0)
-                    .getTextContent());
-        } else {
-            return null;
-        }
-        gene.setEnsembl_id(String.join(", ", ensemblIDs)); // Concatenate ensemblIDs
-        genes.add(gene);
-        protein.setGenes(genes);
 
         return protein;
     }
