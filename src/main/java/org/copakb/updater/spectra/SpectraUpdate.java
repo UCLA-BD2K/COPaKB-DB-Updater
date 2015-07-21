@@ -159,12 +159,12 @@ public class SpectraUpdate {
             int specNum;
 
             // before adding, check if spectrum exists already
-            List<Spectrum> dbSpectrums = peptideDAO.searchSpectrum(ptm_sequence, mod_id, charge);
-            if (dbSpectrums == null || dbSpectrums.isEmpty()) {
+            Spectrum dbSpectrum = peptideDAO.searchSpectrum(ptm_sequence, mod_id, charge);
+            if (dbSpectrum == null) {
                 // not yet in database or if different values in database
                 specNum = peptideDAO.addSpectrum(spectrum);
             } else {
-                specNum = dbSpectrums.get(0).getSpectrum_id();
+                specNum = dbSpectrum.getSpectrum_id();
             }
 
             // create and save spectrum files; currently hardcoded the location
@@ -194,11 +194,11 @@ public class SpectraUpdate {
             // objects exist in the database
             ArrayList<String> tokensInFile = new ArrayList<>(Arrays.asList(tokens));
 
-            List<Spectrum> tempSpecList = peptideDAO.searchSpectrum(ptm_sequence, mod_id, charge);
-            if (tempSpecList.isEmpty()) {
+            Spectrum tempSpec = peptideDAO.searchSpectrum(ptm_sequence, mod_id, charge);
+            if (tempSpec == null) {
                 continue;
             }
-            List<SpectrumProtein> tempTokensInDb = proteinDAO.searchSpectrumProteins(tempSpecList.get(0));
+            List<SpectrumProtein> tempTokensInDb = proteinDAO.searchSpectrumProteins(tempSpec);
 
             List<String> tokensToAdd;
             List<String> tokensToDelete = null;
@@ -261,10 +261,9 @@ public class SpectraUpdate {
                 sp.setLibraryModule(tempLibMod);
                 sp.setFeature_peptide(true);
                 sp.setSpecies_unique(true);
-                Spectrum tempSpec = peptideDAO.searchSpectrum(
-                        spectrum.getPtm_sequence(), spectrum.getModule().getMod_id(), spectrum.getCharge_state())
-                        .get(0);
-                sp.setSpectrum(tempSpec);
+                Spectrum tempSpectrum = peptideDAO.searchSpectrum(
+                        spectrum.getPtm_sequence(), spectrum.getModule().getMod_id(), spectrum.getCharge_state());
+                sp.setSpectrum(tempSpectrum);
                 sp.setPeptide(peptide);
                 try {
                     proteinDAO.addSpectrumProtein(sp);
@@ -283,10 +282,8 @@ public class SpectraUpdate {
 
                 // get persistent entities to be able to search & delete
                 ProteinCurrent existingProtein = proteinDAO.searchByID(token);
-                List<Spectrum> spectrums = peptideDAO.searchSpectrum(spectrum.getPtm_sequence(),
+                spectrum = peptideDAO.searchSpectrum(spectrum.getPtm_sequence(),
                         spectrum.getModule().getMod_id(), spectrum.getCharge_state());
-
-                spectrum = spectrums.get(0);
 
                 // get latest version
                 Version version = new Version();
@@ -324,7 +321,7 @@ public class SpectraUpdate {
             // arraylist of arraylist of peptides within that species
             // each contained list is relevant to a species, where index = species id
             System.out.println("Processing: " + peptide.getPeptide_id());
-            List<Spectrum> pepSpectrums = peptideDAO.searchSpectrum(peptide.getPeptide_sequence(), -1, -1);
+            List<Spectrum> pepSpectrums = peptideDAO.searchSpectrumBySequence(peptide.getPeptide_sequence());
             if (pepSpectrums == null || pepSpectrums.isEmpty()) {
                 System.out.println("\tSkipping " + peptide.getPeptide_id());
                 continue;
@@ -359,7 +356,7 @@ public class SpectraUpdate {
         List<Peptide> peptides = peptideDAO.list();
         for (Peptide peptide : peptides) {
             System.out.println("Processing: " + peptide.getPeptide_id());
-            List<Spectrum> pepSpectrums = peptideDAO.searchSpectrum(peptide.getPeptide_sequence(), -1, -1);
+            List<Spectrum> pepSpectrums = peptideDAO.searchSpectrumBySequence(peptide.getPeptide_sequence());
             if (pepSpectrums == null || pepSpectrums.size() == 0) {
                 System.out.println("\tSkipping " + peptide.getPeptide_id());
                 continue;
@@ -367,7 +364,8 @@ public class SpectraUpdate {
 
             // filter through charges for each
             for (int i = 0; i < 5; i++) { // todo: random range of 0-5 charge
-                List<Spectrum> pepChargeSpectrums = peptideDAO.searchSpectrum(peptide.getPeptide_sequence(), -1, i);
+                List<Spectrum> pepChargeSpectrums =
+                        peptideDAO.searchSpectrumBySequenceAndCharge(peptide.getPeptide_sequence(), i);
                 // find all the spectrum for a certain sequence and charge
                 if (pepChargeSpectrums != null) { // list of all spectra with certain sequence and charge
                     // if only one of sequence + charge combo, then it is unique to one module
