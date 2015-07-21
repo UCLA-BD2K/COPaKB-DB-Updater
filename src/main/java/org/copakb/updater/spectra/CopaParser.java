@@ -7,119 +7,123 @@ import java.io.IOException;
 import java.util.HashMap;
 
 /**
+ * COPA parser
  * Created by vincekyi on 6/11/15.
  */
 public class CopaParser {
-    private HashMap fields;
+    private HashMap<String, String> fields;
     private String spectraInfo;
     private String file;
     private BufferedReader reader;
 
-    public CopaParser(String filename){
+    public CopaParser(String filename) {
         file = filename;
-        fields = new HashMap();
+        fields = new HashMap<>();
         spectraInfo = "";
         initializeFile();
     }
-    // this function initializes the parser and returns a string stating whether it was a success or not
-    private String initializeFile(){
+
+    /**
+     * Initializes the parser.
+     *
+     * @return Success or failure string.
+     */
+    private String initializeFile() {
         reader = null;
-        try{
-            //String file =  "C:\\Users\\COPaKB\\Desktop\\com.database.copa.updater.CopaUpdater\\src\\HumanProteasome.copa";
+        try {
             reader = new BufferedReader(new FileReader(file));
 
-            //checks extension: .copa
-            if(!file.substring(file.length() - 4).equals("copa")){
+            // Check for .copa extension
+            if (!file.substring(file.length() - 4).equals("copa")) {
                 System.out.println("File type must be .copa!");
                 return "File type must be .copa!";
             }
-        }catch(FileNotFoundException ex){
+        } catch (FileNotFoundException ex) {
             System.out.println("Not a valid file!");
             return "Not a valid file!";
         }
         return "Success";
     }
-    //returns the map that holds the current entry's info information
-    public HashMap getCurrentEntry(){
+
+    /**
+     * Returns the map that holds the current entry's info information.
+     * @return Current entry map.
+     */
+    public HashMap<String, String> getCurrentEntry() {
         return fields;
     }
 
-    public String getSpectraInfo() { return spectraInfo; }
+    public String getSpectraInfo() {
+        return spectraInfo;
+    }
 
-    //parses through the header and splits it into fields
-    private void processHeader(String header){
-        //System.out.println(header);
-        //isolate each field
+    /**
+     * Parses through the header and splits it into fields
+     * @param header Header string to parse.
+     */
+    private void processHeader(String header) {
+        // Isolate each field
         String tokens[] = header.split("\\|\\|\\|");
-        for(int i = 1; i<tokens.length; i++){
+        for (int i = 1; i < tokens.length; i++) {
             String field[] = tokens[i].split(":::");
-            //System.out.println(tokens[i]);
-            if(field.length == 1)
+            if (field.length == 1) {
                 fields.put(field[0], "");
-            else
+            } else {
                 fields.put(field[0], field[1]);
-            //System.out.println(field[0]+": "+fields.get(field[0]));
+            }
         }
     }
 
-    public void closeBuffer(){
-        try{
-            if(reader!=null)
+    public void closeBuffer() {
+        try {
+            if (reader != null)
                 reader.close();
-        }
-        catch(IOException ex){
-
+        } catch (IOException ex) {
+            // Do nothing
         }
     }
 
-    //processes each entry of data in the .copa file
-    //returns 1 if processed entry correctly AND there is another entry after it
-    //returns 0 if processed entry correctly AND there are no more entries after it
-    //returns -1 if there is no entry to process
-    public int processEntry(){
-        try{
-            // read in the first line: contains header
+    /**
+     * Processes each entry of data in the COPA file.
+     *
+     * @return 1 if processed correctly and has a following entry, 0 if processed correctly and has no follow entries,
+     * and -1 if no entry to process.
+     */
+    public int processEntry() {
+        try {
+            // Read in the first line and check if it contains header
             String line = reader.readLine();
-            if(line!=null) {
-                if(line.charAt(0) == 'H')
+            if (line != null) {
+                if (line.charAt(0) == 'H') {
                     fields.put("header", line);
-                else
+                } else {
                     fields.put("header", "H" + line);
+                }
                 processHeader(line);
 
-                // store the string of spectra points
+                // Store the string of spectra points
                 StringBuilder spectra = new StringBuilder();
 
-                // observe first character of line
-                // if it's part of the entry append it to spectra
+                // Append to spectra if first character of line is part of the entry
                 int firstChar;
-                while((firstChar = reader.read())!= -1 &&
-                        (char)firstChar != 'H'){
+                while ((firstChar = reader.read()) != -1 && (char) firstChar != 'H') {
                     line = reader.readLine();
-                    spectra.append((char)firstChar);
-                    spectra.append(line+"\n");
+                    spectra.append((char) firstChar);
+                    spectra.append(line).append("\n");
                 }
                 fields.put("spectrum", spectra.toString());
 
-                if((char)firstChar == 'H'){
-                    return 1;      // processed entry, but there's more entries
+                if ((char) firstChar == 'H') {
+                    return 1; // Processed entry, but there's more entries
+                } else {
+                    return 0; // Processed entry, and there's no more after
                 }
-                else
-                    return 0;      // processed entry, and there's no more after
             }
-        } catch(IOException ex){
+        } catch (IOException ex) {
             System.out.println("IO Exception!");
-            return -1;
         }
-        return -1;   //did not process due to no more entries
-    }
 
-    public static void main(String[] args) {
-        CopaParser cp = new CopaParser("./src/main/resources/test.copa");
-        if(cp.processEntry()>0) {
-            for(Object s : cp.getCurrentEntry().values())
-                System.out.println(s.toString());
-        }
-        cp.closeBuffer();
+        // No more entries
+        return -1;
     }
 }
