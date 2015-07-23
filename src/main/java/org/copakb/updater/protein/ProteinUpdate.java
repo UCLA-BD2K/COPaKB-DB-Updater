@@ -186,13 +186,10 @@ public class ProteinUpdate {
         // Get content
         BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
         StringBuilder sb = new StringBuilder();
-        char[] buffer = new char[CHAR_BUFFER_SIZE];
-        int read;
-        String temp = "";
-        //while ((read = reader.read(buffer, 0, buffer.length)) > 0) {
-        while ((temp = reader.readLine()) != null) {
-            //sb.append(buffer, 0, read);
+        String temp = reader.readLine();
+        while (temp != null) {
             sb.append(temp);
+            temp = reader.readLine();
         }
         reader.close();
 
@@ -287,7 +284,7 @@ public class ProteinUpdate {
         }
 
         // Get dbReferences
-        Set<Gene> genes = new HashSet<>();
+        Set<String> geneIDs = new HashSet<>();
         Set<GoTerms> goTerms = new HashSet<>();
         DBRef dbRef = new DBRef();
         List<String> pdb = new ArrayList<>();
@@ -303,11 +300,11 @@ public class ProteinUpdate {
 
             String dbRefType = dbRefElement.getAttribute("type");
 
-            // Get genes
+            // Get gene IDs
             if (dbRefType.startsWith("Ensembl") || dbRefType.startsWith("WormBase")) {
                 Element property = (Element) dbRefElement.getElementsByTagName("property").item(1);
                 if (property != null) {
-                    genes.add(getGeneFromEnsembl(property.getAttribute("value")));
+                    geneIDs.add(property.getAttribute("value"));
                 }
 
                 continue;
@@ -351,7 +348,18 @@ public class ProteinUpdate {
                     break;
             }
         }
+
+        // Add single gene with UniProt gene name and concatenated gene IDs
+        Gene gene = new Gene();
+        gene.setGene_name(((Element) proteinElement
+                .getElementsByTagName("gene").item(0))
+                .getElementsByTagName("name").item(0)
+                .getTextContent());
+        gene.setEnsembl_id(String.join(", ", geneIDs));
+        Set<Gene> genes = new HashSet<>();
+        genes.add(gene);
         protein.setGenes(genes);
+
         protein.setGoTerms(goTerms);
         dbRef.setPdb(String.join("\n", pdb));
         dbRef.setReactome(String.join("\n", reactome));
@@ -545,7 +553,7 @@ public class ProteinUpdate {
             if (proteinDAO.deleteProteinCurrent(protein_acc)) {
                 return 2;
             } else {
-                System.out.println("Could not delete " + protein_acc);
+                System.err.println("Could not delete " + protein_acc);
                 return -1;
             }
         }
