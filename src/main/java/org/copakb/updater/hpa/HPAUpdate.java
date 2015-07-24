@@ -64,9 +64,6 @@ public class HPAUpdate {
                         try {
                             for (HPAProtein protein : parseProteinXML(buffer.toString())) {
                                 proteinDAO.addHPAProtein(protein);
-                                for (Antibody antibody : protein.getAntibodies()) {
-                                    proteinDAO.addAntibody(antibody);
-                                }
                             }
                         } catch (ParserConfigurationException | IOException | SAXException e) {
                             // Continue
