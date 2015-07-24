@@ -193,215 +193,227 @@ public class ProteinUpdate {
         }
         reader.close();
 
-        if (sb.length() <= 1) {
+        if (sb.length() <= 10) { //todo: maybe change to <=20 or something (ex. P08107)
             return null;
         }
 
         ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
 
-        // Parse XML
-        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
-                .parse(new InputSource(new StringReader(sb.toString())));
-        doc.getDocumentElement().normalize();
+        try { // return null if something fails with retrieving uniprot
+            // Parse XML
+            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                    .parse(new InputSource(new StringReader(sb.toString())));
+            doc.getDocumentElement().normalize();
 
-        // Iterate through protein entries
-        NodeList entries = doc.getElementsByTagName("entry");
-        Element proteinElement = (Element) entries.item(0);
-        ProteinCurrent protein = new ProteinCurrent();
+            // Iterate through protein entries
+            NodeList entries = doc.getElementsByTagName("entry");
+            Element proteinElement = (Element) entries.item(0);
+            ProteinCurrent protein = new ProteinCurrent();
 
-        // Get accession (UniProt ID, use first one as primary)
-        protein.setProtein_acc(proteinElement.getElementsByTagName("accession").item(0).getTextContent());
+            // Get accession (UniProt ID, use first one as primary)
+            protein.setProtein_acc(proteinElement.getElementsByTagName("accession").item(0).getTextContent());
 
-        // Get protein full (recommended) name
-        protein.setProtein_name(proteinElement.getElementsByTagName("fullName").item(0).getTextContent());
+            // Get protein full (recommended) name
+            protein.setProtein_name(proteinElement.getElementsByTagName("fullName").item(0).getTextContent());
 
-        // Get sequence and molecular weight
-        // Potential sequence nodes when there are isoforms, target should always be the last node
-        NodeList sequences = proteinElement.getElementsByTagName("sequence");
-        protein.setSequence(sequences.item(sequences.getLength() - 1).getTextContent()
-                .replaceAll("[^A-Z]", "")); // Strip non-uppercase alpha characters
-        protein.setMolecular_weight(Double.valueOf(
-                ((Element) sequences.item(sequences.getLength() - 1)).getAttribute("mass")));
+            // Get sequence and molecular weight
+            // Potential sequence nodes when there are isoforms, target should always be the last node
+            NodeList sequences = proteinElement.getElementsByTagName("sequence");
+            protein.setSequence(sequences.item(sequences.getLength() - 1).getTextContent()
+                    .replaceAll("[^A-Z]", "")); // Strip non-uppercase alpha characters
+            protein.setMolecular_weight(Double.valueOf(
+                    ((Element) sequences.item(sequences.getLength() - 1)).getAttribute("mass")));
 
-        // Handle feature data (default empty strings)
-        protein.setTransmembrane_domain("");
-        protein.setCytoplasmatic_domain("");
-        protein.setNoncytoplasmatic_domain("");
-        protein.setSignal_peptide("");
-        protein.setFeature_table("");
+            // Handle feature data (default empty strings)
+            protein.setTransmembrane_domain("");
+            protein.setCytoplasmatic_domain("");
+            protein.setNoncytoplasmatic_domain("");
+            protein.setSignal_peptide("");
+            protein.setFeature_table("");
 
-        StringBuilder featureTable = new StringBuilder();
-        NodeList features = proteinElement.getElementsByTagName("feature");
-        for (int featureIndex = 0; featureIndex < features.getLength(); featureIndex++) {
-            Element featureElement = (Element) features.item(featureIndex);
-            Element locationElement = (Element) featureElement.getElementsByTagName("location").item(0);
-            NodeList position = locationElement.getElementsByTagName("position");
+            StringBuilder featureTable = new StringBuilder();
+            NodeList features = proteinElement.getElementsByTagName("feature");
+            for (int featureIndex = 0; featureIndex < features.getLength(); featureIndex++) {
+                Element featureElement = (Element) features.item(featureIndex);
+                Element locationElement = (Element) featureElement.getElementsByTagName("location").item(0);
+                NodeList position = locationElement.getElementsByTagName("position");
 
-            // Append new line between feature elements
-            if (featureIndex > 0) {
-                featureTable.append("\n");
-            }
-
-            // Append feature type
-            featureTable.append(featureElement.getAttribute("type")).append("\t");
-
-            // Feature element location has start/end OR position
-            if (position.getLength() == 0) {
-                // Handle start/end
-                String start = ((Element) locationElement
-                        .getElementsByTagName("begin").item(0))
-                        .getAttribute("position");
-                String end = ((Element) locationElement
-                        .getElementsByTagName("end").item(0))
-                        .getAttribute("position");
-
-                // Append start/end positions
-                featureTable.append(start).append("\t").append(end).append("\t");
-
-                // Set domain values
-                if (featureElement.getAttribute("type").equals("transmembrane region")) {
-                    protein.setTransmembrane_domain(start + " - " + end);
-                } else if (featureElement.getAttribute("type").equals("topological domain") &&
-                        featureElement.getAttribute("description").equals("Cytoplasmic")) {
-                    protein.setCytoplasmatic_domain(start + " - " + end);
-                } else if (featureElement.getAttribute("type").equals("topological domain") &&
-                        featureElement.getAttribute("description").equals("Extracellular")) {
-                    protein.setNoncytoplasmatic_domain(start + " - " + end);
-                } else if (featureElement.getAttribute("type").equals("transit peptide") &&
-                        featureElement.getAttribute("description").equals("Mitochondrion")) {
-                    protein.setNoncytoplasmatic_domain(start + " - " + end);
-                } else if (featureElement.getAttribute("type").equals("signal peptide")) {
-                    protein.setSignal_peptide(start + " - " + end);
-                }
-            } else {
-                // Handle position
-                // Append position position
-                featureTable.append(((Element) position.item(0)).getAttribute("position")).append("\t");
-            }
-
-            // Append feature description
-            featureTable.append(featureElement.getAttribute("description"));
-        }
-
-        // Get dbReferences
-        Set<String> geneIDs = new HashSet<>();
-        Set<GoTerms> goTerms = new HashSet<>();
-        DBRef dbRef = new DBRef();
-        List<String> pdb = new ArrayList<>();
-        List<String> reactome = new ArrayList<>();
-        List<String> geneWiki = new ArrayList<>();
-        NodeList dbRefs = proteinElement.getElementsByTagName("dbReference");
-        for (int dbRefIndex = 0; dbRefIndex < dbRefs.getLength(); dbRefIndex++) {
-            Element dbRefElement = (Element) dbRefs.item(dbRefIndex);
-            // Ignore if not a top-level dbReference
-            if (!dbRefElement.getParentNode().getNodeName().equals("entry")) {
-                continue;
-            }
-
-            String dbRefType = dbRefElement.getAttribute("type");
-
-            // Get gene IDs
-            if (dbRefType.startsWith("Ensembl") || dbRefType.startsWith("WormBase")) {
-                Element property = (Element) dbRefElement.getElementsByTagName("property").item(1);
-                if (property != null) {
-                    geneIDs.add(property.getAttribute("value"));
+                // Append new line between feature elements
+                if (featureIndex > 0) {
+                    featureTable.append("\n");
                 }
 
-                continue;
+                // Append feature type
+                featureTable.append(featureElement.getAttribute("type")).append("\t");
+
+                // Feature element location has start/end OR position
+                if (position.getLength() == 0) {
+                    // Handle start/end
+                    String start = ((Element) locationElement
+                            .getElementsByTagName("begin").item(0))
+                            .getAttribute("position");
+                    String end = ((Element) locationElement
+                            .getElementsByTagName("end").item(0))
+                            .getAttribute("position");
+
+                    // Append start/end positions
+                    featureTable.append(start).append("\t").append(end).append("\t");
+
+                    // Set domain values
+                    if (featureElement.getAttribute("type").equals("transmembrane region")) {
+                        protein.setTransmembrane_domain(start + " - " + end);
+                    } else if (featureElement.getAttribute("type").equals("topological domain") &&
+                            featureElement.getAttribute("description").equals("Cytoplasmic")) {
+                        protein.setCytoplasmatic_domain(start + " - " + end);
+                    } else if (featureElement.getAttribute("type").equals("topological domain") &&
+                            featureElement.getAttribute("description").equals("Extracellular")) {
+                        protein.setNoncytoplasmatic_domain(start + " - " + end);
+                    } else if (featureElement.getAttribute("type").equals("transit peptide") &&
+                            featureElement.getAttribute("description").equals("Mitochondrion")) {
+                        protein.setNoncytoplasmatic_domain(start + " - " + end);
+                    } else if (featureElement.getAttribute("type").equals("signal peptide")) {
+                        protein.setSignal_peptide(start + " - " + end);
+                    }
+                } else {
+                    // Handle position
+                    // Append position position
+                    featureTable.append(((Element) position.item(0)).getAttribute("position")).append("\t");
+                }
+
+                // Append feature description
+                featureTable.append(featureElement.getAttribute("description"));
             }
 
-            switch (dbRefType) {
-                case "PDB":
-                    pdb.add(dbRefElement.getAttribute("id"));
-                    break;
-                case "Reactome":
-                    reactome.add(dbRefElement.getAttribute("id"));
-                    break;
-                case "GeneWiki":
-                    geneWiki.add(dbRefElement.getAttribute("id"));
-                    break;
-                case "Proteomes":
-                    // Get chromosome
-                    protein.setChromosome(((Element) dbRefElement
-                            .getElementsByTagName("property").item(0))
-                            .getAttribute("value"));
-                    break;
-                case "GO":
-                    // Get GOTerms
-                    GoTerms goTerm = new GoTerms();
-                    goTerm.setGO_accession(
-                            Integer.valueOf(dbRefElement.getAttribute("id")
-                                    .split(":")[1])); // Ignore the GO: prefix
-                    goTerm.setTerms(((Element) dbRefElement
-                            .getElementsByTagName("property").item(0))
-                            .getAttribute("value"));
-                    goTerm.setEvidence(((Element) dbRefElement
-                            .getElementsByTagName("property").item(1))
-                            .getAttribute("value"));
-                    goTerm.setReference(((Element) dbRefElement
-                            .getElementsByTagName("property").item(2))
-                            .getAttribute("value"));
-                    Set<ProteinCurrent> proteins = new HashSet<>();
-                    proteins.add(protein);
-                    goTerm.setProteins(proteins);
-                    goTerms.add(goTerm);
-                    break;
+            // Get dbReferences
+            Set<String> geneIDs = new HashSet<>();
+            Set<GoTerms> goTerms = new HashSet<>();
+            DBRef dbRef = new DBRef();
+            List<String> pdb = new ArrayList<>();
+            List<String> reactome = new ArrayList<>();
+            List<String> geneWiki = new ArrayList<>();
+            NodeList dbRefs = proteinElement.getElementsByTagName("dbReference");
+            for (int dbRefIndex = 0; dbRefIndex < dbRefs.getLength(); dbRefIndex++) {
+                Element dbRefElement = (Element) dbRefs.item(dbRefIndex);
+                // Ignore if not a top-level dbReference
+                if (!dbRefElement.getParentNode().getNodeName().equals("entry")) {
+                    continue;
+                }
+
+                String dbRefType = dbRefElement.getAttribute("type");
+
+                // Get gene IDs
+                if (dbRefType.startsWith("Ensembl") || dbRefType.startsWith("WormBase")) {
+                    Element property = (Element) dbRefElement.getElementsByTagName("property").item(1);
+                    if (property != null) {
+                        geneIDs.add(property.getAttribute("value"));
+                    }
+
+                    continue;
+                }
+
+                switch (dbRefType) {
+                    case "PDB":
+                        pdb.add(dbRefElement.getAttribute("id"));
+                        break;
+                    case "Reactome":
+                        reactome.add(dbRefElement.getAttribute("id"));
+                        break;
+                    case "GeneWiki":
+                        geneWiki.add(dbRefElement.getAttribute("id"));
+                        break;
+                    case "Proteomes":
+                        // Get chromosome
+                        protein.setChromosome(((Element) dbRefElement
+                                .getElementsByTagName("property").item(0))
+                                .getAttribute("value"));
+                        break;
+                    case "GO":
+                        // Get GOTerms
+                        GoTerms goTerm = new GoTerms();
+                        goTerm.setGO_accession(
+                                Integer.valueOf(dbRefElement.getAttribute("id")
+                                        .split(":")[1])); // Ignore the GO: prefix
+                        goTerm.setTerms(((Element) dbRefElement
+                                .getElementsByTagName("property").item(0))
+                                .getAttribute("value"));
+                        goTerm.setEvidence(((Element) dbRefElement
+                                .getElementsByTagName("property").item(1))
+                                .getAttribute("value"));
+                        goTerm.setReference(((Element) dbRefElement
+                                .getElementsByTagName("property").item(2))
+                                .getAttribute("value"));
+                        Set<ProteinCurrent> proteins = new HashSet<>();
+                        proteins.add(protein);
+                        goTerm.setProteins(proteins);
+                        goTerms.add(goTerm);
+                        break;
+                }
             }
-        }
 
-        // Add single gene with UniProt gene name and concatenated gene IDs
-        Gene gene = new Gene();
-        gene.setGene_name(((Element) proteinElement
-                .getElementsByTagName("gene").item(0))
-                .getElementsByTagName("name").item(0)
-                .getTextContent());
-        gene.setEnsembl_id(String.join(", ", geneIDs));
-        Set<Gene> genes = new HashSet<>();
-        genes.add(gene);
-        protein.setGenes(genes);
+            // Add single gene with UniProt gene name and concatenated gene IDs
+            Set<Gene> genes = new HashSet<>();
+            Gene gene = new Gene();
+            try {
+                gene.setGene_name(((Element) proteinElement
+                        .getElementsByTagName("gene").item(0))
+                        .getElementsByTagName("name").item(0)
+                        .getTextContent());
+                gene.setEnsembl_id(String.join(", ", geneIDs));
 
-        protein.setGoTerms(goTerms);
-        dbRef.setPdb(String.join("\n", pdb));
-        dbRef.setReactome(String.join("\n", reactome));
-        dbRef.setGeneWiki(String.join("\n", geneWiki));
-        dbRef.setProtein_acc(protein.getProtein_acc());
-        protein.setDbRef(dbRef);
-
-        // Get keywords
-        NodeList keywords = proteinElement.getElementsByTagName("keyword");
-        StringBuilder kw = new StringBuilder();
-        for (int keywordIndex = 0; keywordIndex < keywords.getLength(); keywordIndex++) {
-            // Append pipe separator between keywords
-            if (keywordIndex > 0) {
-                kw.append(" | ");
+                genes.add(gene);
             }
+            catch (Exception ex) {
+                // do nothing, let it return an empty gene list
+            }
+            protein.setGenes(genes);
 
-            kw.append(keywords.item(keywordIndex).getTextContent());
-        }
-        protein.setKeywords(kw.toString());
+            protein.setGoTerms(goTerms);
+            dbRef.setPdb(String.join("\n", pdb));
+            dbRef.setReactome(String.join("\n", reactome));
+            dbRef.setGeneWiki(String.join("\n", geneWiki));
+            dbRef.setProtein_acc(protein.getProtein_acc());
+            protein.setDbRef(dbRef);
 
-        // Get feature table string
-        protein.setFeature_table(featureTable.toString());
+            // Get keywords
+            NodeList keywords = proteinElement.getElementsByTagName("keyword");
+            StringBuilder kw = new StringBuilder();
+            for (int keywordIndex = 0; keywordIndex < keywords.getLength(); keywordIndex++) {
+                // Append pipe separator between keywords
+                if (keywordIndex > 0) {
+                    kw.append(" | ");
+                }
 
-        // Get species
-        NodeList speciesNames = ((Element) proteinElement.getElementsByTagName("organism").item(0))
-                .getElementsByTagName("name");
-        // Check scientific name first
-        String speciesName = speciesNames.item(0).getTextContent(); // First species name should be scientific
-        Species species = proteinDAO.searchSpecies(speciesName);
-        // Check common name if necessary
-        if (species == null && speciesNames.getLength() > 1) {
-            speciesName = speciesNames.item(1).getTextContent(); // Second species name should be common
-        }
-        species = proteinDAO.searchSpecies(speciesName);
-        // If neither scientific or common name are in the database, add the common name
-        if (species == null) {
-            proteinDAO.addSpecies(new Species(0, speciesName));
+                kw.append(keywords.item(keywordIndex).getTextContent());
+            }
+            protein.setKeywords(kw.toString());
+
+            // Get feature table string
+            protein.setFeature_table(featureTable.toString());
+
+            // Get species
+            NodeList speciesNames = ((Element) proteinElement.getElementsByTagName("organism").item(0))
+                    .getElementsByTagName("name");
+            // Check scientific name first
+            String speciesName = speciesNames.item(0).getTextContent(); // First species name should be scientific
+            Species species = proteinDAO.searchSpecies(speciesName);
+            // Check common name if necessary
+            if (species == null && speciesNames.getLength() > 1) {
+                speciesName = speciesNames.item(1).getTextContent(); // Second species name should be common
+            }
             species = proteinDAO.searchSpecies(speciesName);
-        }
-        protein.setSpecies(species);
+            // If neither scientific or common name are in the database, add the common name
+            if (species == null) {
+                proteinDAO.addSpecies(new Species(0, speciesName));
+                species = proteinDAO.searchSpecies(speciesName);
+            }
+            protein.setSpecies(species);
 
-        return protein;
+            return protein;
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     /**
@@ -498,10 +510,10 @@ public class ProteinUpdate {
                 // create and add protein history entry
                 ProteinHistory proteinHistory = new ProteinHistory();
                 proteinHistory.setProtein_acc(protein_acc);
-                proteinHistory.setProtein_name(p.getProtein_name());
-                proteinHistory.setChromosome(p.getChromosome());
-                proteinHistory.setMolecular_weight(p.getMolecular_weight());
-                proteinHistory.setSequence(p.getSequence());
+                proteinHistory.setProtein_name(existingProtein.getProtein_name());
+                proteinHistory.setChromosome(existingProtein.getChromosome());
+                proteinHistory.setMolecular_weight(existingProtein.getMolecular_weight());
+                proteinHistory.setSequence(existingProtein.getSequence());
                 proteinHistory.setVersion(version);
                 proteinHistory.setDelete_date(new Date());
 

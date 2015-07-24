@@ -49,6 +49,8 @@ public class SpectraUpdate {
             String parseShortName = parsedShortName[parsedShortName.length - 1];
 
             try { // last section of file name is an integer, truncate
+                Integer.parseInt(parseShortName); // check if last part is integer
+                // if it is, then it will continue this loop, otherwise it will go to catch
                 organelle = parsedShortName[parsedShortName.length - 2];
                 for (int i = 0; i < parsedShortName.length - 1; i++) {
                     libmod += parsedShortName[i] + "_";
@@ -65,6 +67,11 @@ public class SpectraUpdate {
             }
 
             String species = parsedShortName[0];
+            if(species.length() < 2) { // for shortened names such as C. Elegans
+                String temp = " " + parsedShortName[1];
+                species = species.concat(temp);
+            }
+
             // match to formatted species name
             species = species.substring(0, 1).toUpperCase() + species.substring(1).toLowerCase();
             Species tempSpecies = proteinDAO.searchSpecies(species);
@@ -231,9 +238,6 @@ public class SpectraUpdate {
                         // Get and add protein if not in database
                         prot = ProteinUpdate.getProteinFromUniprot(token);
                         if (prot != null) {
-                            proteinDAO.addProteinCurrent(prot);
-                        }
-                        if (prot != null) {
                             //prot.setDbRef(null);
                             try {
                                 proteinDAO.addProteinCurrent(prot);
@@ -277,19 +281,22 @@ public class SpectraUpdate {
             if (tokensToDelete == null)
                 continue;
 
+            // TODO: FOR FIRST RUN, ADD EVERYTHING
             // delete all spectrum protein objects that are in database but no longer in COPA file
-            for (String token : tokensToDelete) {
+            /*for (String token : tokensToDelete) {
 
                 // get persistent entities to be able to search & delete
                 ProteinCurrent existingProtein = proteinDAO.searchByID(token);
                 spectrum = peptideDAO.searchSpectrum(spectrum.getPtm_sequence(),
                         spectrum.getModule().getMod_id(), spectrum.getCharge_state());
 
-                // get latest version
-                Version version = new Version();
-                version.setVersion(proteinDAO.searchLatestVersion().getVersion() - 1); // set it to previous versions
-                version.setDescription("Update"); // todo: change the description values
-                version.setDate(new Date());
+                // get last version
+//                Version version = new Version();
+//                version.setVersion(proteinDAO.searchLatestVersion().getVersion() - 1); // set it to previous versions
+//                version.setDescription("Update"); // todo: change the description values
+//                version.setDate(new Date());
+
+                Version version = proteinDAO.searchVersion(proteinDAO.searchLatestVersion().getVersion() - 1);
 
                 SpectrumProtein spectrumProtein = proteinDAO.searchSpectrumProtein(spectrum, existingProtein);
                 SpectrumProteinHistory spectrumProteinHistory = new SpectrumProteinHistory();
@@ -310,6 +317,7 @@ public class SpectraUpdate {
                 proteinDAO.deleteSpectrumProtein(spectrumProtein.getSpectrumProtein_id());
                 System.out.println("Deleted: " + spectrumProtein.getProtein().getProtein_acc());
             }
+            */
         }
     }
 
@@ -733,5 +741,23 @@ public class SpectraUpdate {
 
             peptideDAO.addPtmType(new PTM_type(i, mod, res, mass, null));
         }
+    }
+
+    public static void main(String[] args) {
+        /*String s = "p1;";
+        String[] tokens = s.split(";");
+        for (String token : tokens) {
+            System.out.println(token);
+        }*/
+
+        update("./src/main/resources/copa_to_do/Human_Platelet_20140516.copa", -1, "LTQ", "Trypsin");
+
+        //updateUniqueStates();
+
+        //updateFeatureStates();
+
+        //parsePtmSequence("(42.0106)VNKVIEINPYLLGTM(15.9949)SGCAADCQYWER");
+
+        //addPtm_Types();
     }
 }
