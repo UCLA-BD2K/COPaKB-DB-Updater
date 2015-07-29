@@ -94,7 +94,7 @@ public class HPAUpdate {
             HPAProtein hpa = new HPAProtein();
 
             // Get Ensembl gene ID
-            hpa.setEnsemblID(((Element) proteinElement
+            hpa.setEnsembl_id(((Element) proteinElement
                     .getElementsByTagName("identifier").item(0))
                     .getAttribute("id"));
 
@@ -102,10 +102,15 @@ public class HPAUpdate {
             hpa.setProteinName(proteinElement.getElementsByTagName("name").item(0).getTextContent());
 
             // Get protein expression summary
-            hpa.setExpressionSummary(((Element) proteinElement
-                    .getElementsByTagName("tissueExpression").item(0))
-                    .getElementsByTagName("summary").item(0)
-                    .getTextContent());
+            try {
+                hpa.setExpressionSummary(((Element) proteinElement
+                        .getElementsByTagName("tissueExpression").item(0))
+                        .getElementsByTagName("summary").item(0)
+                        .getTextContent());
+            }
+            catch (Exception e) {
+                hpa.setExpressionSummary("");
+            }
 
             // Get protein classes
             List<String> proteinClasses = new ArrayList<>();
@@ -137,18 +142,23 @@ public class HPAUpdate {
                 // Get subcell locations
                 List<String> mainLocations = new ArrayList<>();
                 List<String> altLocations = new ArrayList<>();
-                NodeList locations = ((Element) subLocElement.getElementsByTagName("data").item(0))
-                        .getElementsByTagName("location");
-                for (int j = 0; j < locations.getLength(); j++) {
-                    Element location = (Element) locations.item(j);
-                    if (location.getAttribute("status").equals("main")) {
-                        mainLocations.add(location.getTextContent());
-                    } else {
-                        altLocations.add(location.getTextContent());
+                try {
+                    NodeList locations = ((Element) subLocElement.getElementsByTagName("data").item(0))
+                            .getElementsByTagName("location");
+                    for (int j = 0; j < locations.getLength(); j++) {
+                        Element location = (Element) locations.item(j);
+                        if (location.getAttribute("status").equals("main")) {
+                            mainLocations.add(location.getTextContent());
+                        } else {
+                            altLocations.add(location.getTextContent());
+                        }
                     }
+                    hpa.setMainLocations(String.join(", ", mainLocations));
+                    hpa.setAltLocations(String.join(", ", altLocations));
                 }
-                hpa.setMainLocations(String.join(", ", mainLocations));
-                hpa.setAltLocations(String.join(", ", altLocations));
+                catch (Exception e) {
+
+                }
             }
 
             // Add antibodies
@@ -160,74 +170,81 @@ public class HPAUpdate {
                 Antibody antibody = new Antibody();
 
                 // Get antibody ID
-                antibody.setAntibodyID(antibodyElement.getAttribute("id"));
-                antibodyIDs.add(antibody.getAntibodyID());
+                antibody.setAntibody_id(antibodyElement.getAttribute("id"));
+                antibodyIDs.add(antibody.getAntibody_id());
 
                 // Get Ensembl ID
-                antibody.setEnsemblID(hpa.getEnsemblID());
+                antibody.setEnsembl_id(hpa.getEnsembl_id());
 
                 // Get antibody immunohistochemistry (IHC) data
-                Element tissueExpression = (Element) antibodyElement.getElementsByTagName("tissueExpression").item(0);
-                if (tissueExpression.getAttribute("technology").equals("IH") &&
-                        tissueExpression.getAttribute("assayType").equals("tissue")) {
-                    antibody.setSummary((tissueExpression.getElementsByTagName("summary").item(0).getTextContent()));
+                Element tissueExpression = tissueExpression = (Element) antibodyElement.getElementsByTagName("tissueExpression").item(0);
+                if(tissueExpression != null && tissueExpression.hasAttribute("technology")) {
+                    if (tissueExpression.getAttribute("technology").equals("IH") &&
+                            tissueExpression.getAttribute("assayType").equals("tissue")) {
+                        antibody.setSummary((tissueExpression.getElementsByTagName("summary").item(0).getTextContent()));
+                    }
+                }
+                else {
+                    antibody.setSummary("");
                 }
 
                 // Check for antibody heart expression
-                NodeList tissueDataNodes = tissueExpression.getElementsByTagName("data");
-                for (int dataIndex = 0; dataIndex < tissueDataNodes.getLength(); dataIndex++) {
-                    Element dataElement = (Element) tissueDataNodes.item(dataIndex);
-                    if (dataElement.getElementsByTagName("tissue").item(0).getTextContent()
-                            .equals("heart muscle")) {
-                        Element cellElement = (Element) dataElement.getElementsByTagName("tissueCell").item(0);
+                if(tissueExpression != null) {
+                    NodeList tissueDataNodes = tissueExpression.getElementsByTagName("data");
+                    for (int dataIndex = 0; dataIndex < tissueDataNodes.getLength(); dataIndex++) {
+                        Element dataElement = (Element) tissueDataNodes.item(dataIndex);
+                        if (dataElement.getElementsByTagName("tissue").item(0).getTextContent()
+                                .equals("heart muscle")) {
+                            Element cellElement = (Element) dataElement.getElementsByTagName("tissueCell").item(0);
 
-                        // Verify myocyte cell types
-                        if (!cellElement.getElementsByTagName("cellType").item(0).getTextContent()
-                                .equals("myocytes")) {
-                            throw new RuntimeException("Antibody " + antibody.getAntibodyID() + " of protein " +
-                                    antibody.getEnsemblID() + "contains no heart muscle myocyte cells.");
+                            // Verify myocyte cell types
+                            if (!cellElement.getElementsByTagName("cellType").item(0).getTextContent()
+                                    .equals("myocytes")) {
+                                throw new RuntimeException("Antibody " + antibody.getAntibody_id() + " of protein " +
+                                        antibody.getEnsembl_id() + "contains no heart muscle myocyte cells.");
+                            }
+
+                            // Get myocyte staining and intensity levels
+                            NodeList levels = cellElement.getElementsByTagName("level");
+                            antibody.setMyocyteStaining(levels.item(0) // First level item is staining
+                                    .getTextContent());
+                            antibody.setMyocyteIntensity(levels.item(1) // Second level item is staining
+                                    .getTextContent());
+
+                            // Get first patient info
+                            Element patientElement = (Element) dataElement.getElementsByTagName("patient").item(0);
+
+                            // Get sample patient sex
+                            antibody.setSamplePatientSex(patientElement
+                                    .getElementsByTagName("sex").item(0)
+                                    .getTextContent());
+
+                            // Get sample patient age
+                            antibody.setSamplePatientAge(Integer.valueOf(patientElement
+                                    .getElementsByTagName("age").item(0)
+                                    .getTextContent()));
+
+                            // Get first sample info of patient
+                            Element sampleElement = (Element) patientElement.getElementsByTagName("sample").item(0);
+
+                            // Get sample description
+                            NodeList snomedParams = ((Element) sampleElement
+                                    .getElementsByTagName("snomedParameters").item(0))
+                                    .getElementsByTagName("snomed");
+                            List<String> descs = new ArrayList<>();
+                            for (int snomedIndex = 0; snomedIndex < snomedParams.getLength(); snomedIndex++) {
+                                descs.add(((Element) snomedParams.item(snomedIndex)).getAttribute("tissueDescription"));
+                            }
+                            antibody.setSampleDesc(String.join(", ", descs));
+
+                            // Get sample image
+                            antibody.setSampleImage(((Element) ((Element) sampleElement
+                                    .getElementsByTagName("assayImage").item(0))
+                                    .getElementsByTagName("image").item(0))
+                                    .getElementsByTagName("imageUrl").item(0)
+                                    .getTextContent());
+                            break;
                         }
-
-                        // Get myocyte staining and intensity levels
-                        NodeList levels = cellElement.getElementsByTagName("level");
-                        antibody.setMyocyteStaining(levels.item(0) // First level item is staining
-                                .getTextContent());
-                        antibody.setMyocyteIntensity(levels.item(1) // Second level item is staining
-                                .getTextContent());
-
-                        // Get first patient info
-                        Element patientElement = (Element) dataElement.getElementsByTagName("patient").item(0);
-
-                        // Get sample patient sex
-                        antibody.setSamplePatientSex(patientElement
-                                .getElementsByTagName("sex").item(0)
-                                .getTextContent());
-
-                        // Get sample patient age
-                        antibody.setSamplePatientAge(Integer.valueOf(patientElement
-                                .getElementsByTagName("age").item(0)
-                                .getTextContent()));
-
-                        // Get first sample info of patient
-                        Element sampleElement = (Element) patientElement.getElementsByTagName("sample").item(0);
-
-                        // Get sample description
-                        NodeList snomedParams = ((Element) sampleElement
-                                .getElementsByTagName("snomedParameters").item(0))
-                                .getElementsByTagName("snomed");
-                        List<String> descs = new ArrayList<>();
-                        for (int snomedIndex = 0; snomedIndex < snomedParams.getLength(); snomedIndex++) {
-                            descs.add(((Element) snomedParams.item(snomedIndex)).getAttribute("tissueDescription"));
-                        }
-                        antibody.setSampleDesc(String.join(", ", descs));
-
-                        // Get sample image
-                        antibody.setSampleImage(((Element) ((Element) sampleElement
-                                .getElementsByTagName("assayImage").item(0))
-                                .getElementsByTagName("image").item(0))
-                                .getElementsByTagName("imageUrl").item(0)
-                                .getTextContent());
-                        break;
                     }
                 }
 

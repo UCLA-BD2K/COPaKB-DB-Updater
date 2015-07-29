@@ -78,7 +78,8 @@ public class DiseaseUpdate {
     }
 
     /**
-     * Extracts DiseaseGene information from omim.org
+     * Extracts DiseaseGene information from omim.org.
+     * Uses disease and gene information to create a DiseaseGene object which includes references and pubmed information.
      * @param disease disease object that is used to find the DiseaseGene object
      * @param gene gene object that is used to find the DiseaseGene object
      * @return defined DiseaseGene object that is mapped by the combination of the disease and gene parameters
@@ -114,7 +115,8 @@ public class DiseaseUpdate {
     }
 
     /**
-     * Extracts Disease information from omim.org
+     * Extracts Disease information from omim.org.
+     * Does this for all diseases related to a specified gene.
      * @param gene gene symbol
      * @return list of diseases relevant to the gene specified
      */

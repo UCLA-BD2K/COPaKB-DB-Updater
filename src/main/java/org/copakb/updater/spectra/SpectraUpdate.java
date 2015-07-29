@@ -30,7 +30,6 @@ public class SpectraUpdate {
         ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
 
         // Add PTM types if necessary
-        // TODO Make more robust checks, or run always
         if (peptideDAO.searchPtmType(0) == null || peptideDAO.searchPtmType(255) == null) {
             addPTMTypes();
         }
@@ -38,17 +37,20 @@ public class SpectraUpdate {
         LibraryModule tempLibMod = null;
         String organelle = "";
         String libmod = "";
+
+        // if module is known, retrieve the module information, otherwise parse the
+        // file name for module information and add new module
         if (mod_id != -1) {
             tempLibMod = peptideDAO.searchLibraryModuleWithId(mod_id);
         }
         if (mod_id == -1 || tempLibMod == null) {
-            String[] shortFileName = file.split("/");
+            String[] shortFileName = file.split("[\\\\/]");
             String shortName = shortFileName[shortFileName.length - 1];
             shortName = shortName.substring(0, shortName.length() - 5);
             String[] parsedShortName = shortName.split("_");
             String parseShortName = parsedShortName[parsedShortName.length - 1];
 
-            try { // last section of file name is an integer, truncate
+            try { // if last section of file name is an integer, truncate
                 Integer.parseInt(parseShortName); // check if last part is integer
                 // if it is, then it will continue this loop, otherwise it will go to catch
                 organelle = parsedShortName[parsedShortName.length - 2];
@@ -56,7 +58,8 @@ public class SpectraUpdate {
                     libmod += parsedShortName[i] + "_";
                 }
                 libmod = libmod.substring(0, libmod.length() - 1);
-            } catch (NumberFormatException e) { // last section of file name is not an integer, must be organelle
+            } catch (NumberFormatException e) {
+                // last section of file name is not an integer, must be organelle
                 organelle = parseShortName;
                 libmod = shortName;
             } catch (ArrayIndexOutOfBoundsException e) {
@@ -67,7 +70,8 @@ public class SpectraUpdate {
             }
 
             String species = parsedShortName[0];
-            if(species.length() < 2) { // for shortened names such as C. Elegans
+            // for shortened names such as C. Elegans, combine with next segment of file name
+            if(species.length() < 2) {
                 String temp = " " + parsedShortName[1];
                 species = species.concat(temp);
             }
@@ -80,7 +84,7 @@ public class SpectraUpdate {
                 proteinDAO.addSpecies(tempSpecies);
             }
 
-            Date date = new Date();
+            System.out.println(libmod);
 
             // add library module according to file name
             // assumes format as [organism]_[organ]_[organelle](_[date]).copa
@@ -88,7 +92,7 @@ public class SpectraUpdate {
             if (checkMod != null) {
                 tempLibMod = checkMod;
             } else {
-                tempLibMod = new LibraryModule(libmod, instr, organelle, date, enzyme, tempSpecies);
+                tempLibMod = new LibraryModule(libmod, instr, organelle, new Date(), enzyme, tempSpecies);
             }
 
             mod_id = peptideDAO.addLibraryModule(tempLibMod);
@@ -113,7 +117,7 @@ public class SpectraUpdate {
         PeptideDAO peptideDAO = DAOObject.getInstance().getPeptideDAO();
         ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
 
-        System.out.println("\n\n********************");
+        System.out.println("\n********************");
         System.out.println("PEPID: " + entry.get("PEPID"));
 
         String whole_sequence = (String) entry.get("SEQ");
@@ -166,7 +170,7 @@ public class SpectraUpdate {
             int specNum;
 
             // before adding, check if spectrum exists already
-            Spectrum dbSpectrum = peptideDAO.searchSpectrum(ptm_sequence, mod_id, charge);
+            Spectrum dbSpectrum = peptideDAO.searchSpectrumByAll(ptm_sequence, mod_id, charge, spectrum.getXcorr(), spectrum.getRawfile_id());
             if (dbSpectrum == null) {
                 // not yet in database or if different values in database
                 specNum = peptideDAO.addSpectrum(spectrum);
@@ -195,8 +199,6 @@ public class SpectraUpdate {
 
             String[] tokens = proteins.split(";");
 
-            // todo: spectrum protein update testing to be done
-
             // check referenced proteins in copa files and if relevant spectrum protein
             // objects exist in the database
             ArrayList<String> tokensInFile = new ArrayList<>(Arrays.asList(tokens));
@@ -210,7 +212,9 @@ public class SpectraUpdate {
             List<String> tokensToAdd;
             List<String> tokensToDelete = null;
 
-            if (tempTokensInDb != null) { // if there are spectrum proteins in the database, check if they need to be deleted
+            // if there are spectrum proteins in the database, check if they need to be deleted
+            // because they are no longer referenced in the copa file
+            if (tempTokensInDb != null) {
                 // convert matching spectrums to just get the list of uniprot ids
                 ArrayList<String> tokensDelete = new ArrayList<>();
                 tempTokensInDb.forEach((SpectrumProtein spectrumProtein) ->
@@ -260,6 +264,7 @@ public class SpectraUpdate {
                 String tempPtmSeq = ptm_sequence.replaceAll("[^A-Za-z]", "");
                 loc = protSeq.indexOf(tempPtmSeq);
 
+                // populate rest of spectrum protein
                 sp.setProtein(proteinDAO.searchByID(prot.getProtein_acc()));
                 sp.setLocation(loc);
                 sp.setLibraryModule(tempLibMod);
@@ -281,7 +286,7 @@ public class SpectraUpdate {
             if (tokensToDelete == null)
                 continue;
 
-            // TODO: FOR FIRST RUN, ADD EVERYTHING
+            // TODO: FOR FIRST RUN, ADD EVERYTHING, UPDATE FEATURE IS CURRENTLY DISABLED
             // delete all spectrum protein objects that are in database but no longer in COPA file
             /*for (String token : tokensToDelete) {
 
@@ -289,12 +294,6 @@ public class SpectraUpdate {
                 ProteinCurrent existingProtein = proteinDAO.searchByID(token);
                 spectrum = peptideDAO.searchSpectrum(spectrum.getPtm_sequence(),
                         spectrum.getModule().getMod_id(), spectrum.getCharge_state());
-
-                // get last version
-//                Version version = new Version();
-//                version.setVersion(proteinDAO.searchLatestVersion().getVersion() - 1); // set it to previous versions
-//                version.setDescription("Update"); // todo: change the description values
-//                version.setDate(new Date());
 
                 Version version = proteinDAO.searchVersion(proteinDAO.searchLatestVersion().getVersion() - 1);
 
@@ -321,6 +320,19 @@ public class SpectraUpdate {
         }
     }
 
+    /**
+     * Updates the species unique states in Spectrum table.
+     * To be species unique, a peptide has to be unique per species.
+     * For example (assuming each entry is a different spectrum),
+     * <p></p>
+     * Peptide ID | Module ID | Species | Unique <p>
+     * 1 | 8 | 9 | 0 <p>
+     * 1 | 9 | 9 | 0 <p>
+     * 1 | 7 | 7 | 0 <p>
+     * 1 | 7 | 7 | 0 <p>
+     * 1 | 6 | 6 | 1 <p>
+     *
+     */
     public static void updateUniqueStates() {
         PeptideDAO peptideDAO = DAOObject.getInstance().getPeptideDAO();
 
@@ -336,7 +348,7 @@ public class SpectraUpdate {
             }
 
             HashMap<Integer, ArrayList<Spectrum>> sortedPeptides = new HashMap<>();
-            for (int i = 0; i <= 10; i++) { // todo: assuming 10 species, fix; could reuse for every peptide
+            for (int i = 0; i <= 15; i++) { // todo: assuming 15 species, fix; seems inefficient to initialize hibernate list just for count but need index number for species buckets
                 // initialize the species keys
                 if (peptideDAO.searchSpecies(i) != null) {
                     sortedPeptides.put(i, new ArrayList<>());
@@ -358,6 +370,21 @@ public class SpectraUpdate {
         }
     }
 
+    /**
+     * Updates the feature peptide states in Spectrum table.
+     * To be a feature peptide, a peptide has to be unique per sequence + charge across different modules.
+     * A feature peptide means that it is indicative of a certain module, so the sequence + charge combo is only found in one module.
+     * For example (assuming each entry is a different spectrum),
+     * <p></p>
+     * Module ID | Sequence | Charge | Feature <p>
+     * 1 | 1 | 1 | 0 <p>
+     * 1 | 1 | 2 | 0 <p>
+     * 1 | 1 | 3 | 1 <p>
+     * 2 | 1 | 1 | 0 <p>
+     * 2 | 1 | 2 | 0 <p>
+     * 1 | 2 | 1 | 1 <p>
+     *
+     */
     public static void updateFeatureStates() {
         PeptideDAO peptideDAO = DAOObject.getInstance().getPeptideDAO();
 
@@ -599,6 +626,7 @@ public class SpectraUpdate {
 
     /**
      * Returns the PTM_type ID for a given PTM sequence.
+     *
      * 1	Carbamidomethylation	C,K,H	57.02000
      * 2	Acetylation	K,N-term	42.01000
      * 4	Oxidation	M	15.99000
@@ -671,7 +699,9 @@ public class SpectraUpdate {
     }
 
     /**
-     * Adds PTM types
+     * Adds PTM types.
+     * Only needs to be run once in the database since the values are static
+     *
      * 1	Carbamidomethylation	C,K,H	57.02000
      * 2	Acetylation	K,N-term	42.01000
      * 4	Oxidation	M	15.99000
@@ -750,7 +780,7 @@ public class SpectraUpdate {
             System.out.println(token);
         }*/
 
-        update("./src/main/resources/copa_to_do/Human_Platelet_20140516.copa", -1, "LTQ", "Trypsin");
+        update("./src/main/resources/copa_to_do/human_whole_heart_lysate_1234.copa", -1, "LTQ", "Trypsin");
 
         //updateUniqueStates();
 

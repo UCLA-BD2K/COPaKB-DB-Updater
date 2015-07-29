@@ -1,10 +1,16 @@
 package org.copakb.updater;
 
 import org.apache.commons.cli.*;
+import org.copakb.server.dao.DAOObject;
+import org.copakb.server.dao.model.Version;
 import org.copakb.updater.disease.DiseaseUpdate;
 import org.copakb.updater.hpa.HPAUpdate;
 import org.copakb.updater.protein.ProteinUpdate;
 import org.copakb.updater.spectra.SpectraUpdate;
+
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Date;
 
 /**
  * Main entry point for DB-Updater.
@@ -19,6 +25,22 @@ public class DBUpdate {
         // Create options
         Options options = new Options();
         OptionGroup optionGroup = new OptionGroup();
+
+        Option optAll = Option.builder("all")
+                .longOpt("all")
+                .desc("Add/update version, proteins, spectra, and diseases")
+                .hasArgs()
+                .argName("version description> <directory> <instrument> <enzyme")
+                .build();
+        optionGroup.addOption(optAll);
+
+        Option optVersion = Option.builder("ver")
+                .longOpt("version")
+                .desc("Add new version")
+                .hasArgs()
+                .argName("description")
+                .build();
+        optionGroup.addOption(optVersion);
 
         Option optDisease = Option.builder("dis")
                 .longOpt("disease")
@@ -46,9 +68,17 @@ public class DBUpdate {
                 .longOpt("spectra")
                 .desc("Update Spectra from COPA file")
                 .hasArgs()
-                .argName("file> [module ID] <instrument> <enzyme")
+                .argName("file> <module ID> <instrument> <enzyme")
                 .build();
         optionGroup.addOption(optSpectra);
+
+        Option optSpectraDir = Option.builder("specdir")
+                .longOpt("spectradirectory")
+                .desc("Update Spectra from COPA files in directory")
+                .hasArgs()
+                .argName("directory> <instrument> <enzyme")
+                .build();
+        optionGroup.addOption(optSpectraDir);
 
         Option optHelp = Option.builder("h")
                 .longOpt("help")
@@ -70,6 +100,55 @@ public class DBUpdate {
             cmd = parser.parse(options, args);
         } catch (ParseException e) {
             formatter.printHelp(PROGRAM_NAME, header, options, footer, true);
+            return;
+        }
+
+        if (cmd.hasOption(optAll.getOpt())) {
+            String[] allArgs = cmd.getOptionValues(optAll.getOpt());
+
+            // update version
+            updateVersion(allArgs[0]);
+
+            try {
+                // go through all files in fasta folder
+                System.out.println("Iterating through: " + allArgs[1] + "/fasta");
+                Files.walk(Paths.get(allArgs[1] + "\\fasta")).forEach(filePath -> {
+                    if (Files.isRegularFile(filePath)) {
+                        // check if .copa spectrum files
+                        if (filePath.toString().endsWith(".fasta")) {
+                            System.out.println(filePath);
+                            ProteinUpdate.updateFromFasta(".\\" + filePath.toString());
+                        }
+                    }
+                });
+
+                // go through all files in copa folder
+                System.out.println("Iterating through: " + allArgs[1] + "/copa");
+                Files.walk(Paths.get(allArgs[1] + "\\copa")).forEach(filePath -> {
+                    if (Files.isRegularFile(filePath)) {
+                        // check if .copa spectrum files
+                        if (filePath.toString().endsWith(".copa")) {
+                            System.out.println(filePath);
+                            SpectraUpdate.update(".\\" + filePath.toString(),
+                                    -1,
+                                    allArgs[2],
+                                    allArgs[3]);
+                        }
+                    }
+                });
+
+
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                System.out.println("Cannot read files from directory: " + allArgs[1]);
+            }
+
+            return;
+        }
+
+        if (cmd.hasOption(optVersion.getOpt())) {
+            updateVersion(cmd.getOptionValues(optVersion.getOpt())[0]);
             return;
         }
 
@@ -108,7 +187,42 @@ public class DBUpdate {
             return;
         }
 
+        if (cmd.hasOption(optSpectraDir.getOpt())) {
+            String[] spectraDirArgs = cmd.getOptionValues(optSpectraDir.getOpt());
+            try {
+                // go through all files in folder
+                Files.walk(Paths.get(spectraDirArgs[0])).forEach(filePath -> {
+                    if (Files.isRegularFile(filePath)) {
+                        // check if .copa spectrum files
+                        if(filePath.toString().endsWith(".copa")) {
+                            System.out.println(filePath);
+                            //String fileName = filePath.toString().split("[\\\\/]")[filePath.toString().split("[\\\\/]").length - 1];
+                            //System.out.println(fileName);
+                            System.out.println("." + filePath);
+                            SpectraUpdate.update(".\\" + filePath.toString(),
+                                    -1,
+                                    spectraDirArgs[1],
+                                    spectraDirArgs[2]);
+                        }
+                    }
+                });
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                System.out.println("Cannot read files from directory: " + spectraDirArgs[0]);
+            }
+            return;
+        }
+
         // Default or help
         formatter.printHelp(PROGRAM_NAME, header, options, footer, true);
+    }
+
+    public static void updateVersion(String desc) {
+        Version version = new Version();
+        version.setVersion(DAOObject.getInstance().getProteinDAO().searchLatestVersion().getVersion() + 1);
+        version.setDescription(desc);
+        version.setDate(new Date());
+        DAOObject.getInstance().getProteinDAO().addVersion(version);
     }
 }
