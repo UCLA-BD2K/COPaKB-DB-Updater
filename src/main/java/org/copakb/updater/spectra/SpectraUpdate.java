@@ -170,7 +170,8 @@ public class SpectraUpdate {
             int specNum;
 
             // before adding, check if spectrum exists already
-            Spectrum dbSpectrum = peptideDAO.searchSpectrumByAll(ptm_sequence, mod_id, charge, spectrum.getXcorr(), spectrum.getRawfile_id());
+            //Spectrum dbSpectrum = peptideDAO.searchSpectrumByAll(ptm_sequence, mod_id, charge, spectrum.getXcorr(), spectrum.getRawfile_id());
+            Spectrum dbSpectrum = peptideDAO.searchSpectrum(ptm_sequence, mod_id, charge);
             if (dbSpectrum == null) {
                 // not yet in database or if different values in database
                 specNum = peptideDAO.addSpectrum(spectrum);
@@ -224,6 +225,9 @@ public class SpectraUpdate {
                 tokensToAdd = new ArrayList<>(tokensInFile);
                 tokensToDelete = new ArrayList<>(tokensInDb);
 
+                // subtract from each list so that the resulting is
+                // tokensToAdd : uniprot tokens that have not been added yet as SpectrumProteins
+                // tokensToDelete : uniprot tokens that have been added as SpectrumProteins but are no longer associated
                 tokensToAdd.removeAll(tokensInDb);
                 tokensToDelete.removeAll(tokensInFile);
             } else { // if nothing in database, then just add all uniprot ids
@@ -268,8 +272,6 @@ public class SpectraUpdate {
                 sp.setProtein(proteinDAO.searchByID(prot.getProtein_acc()));
                 sp.setLocation(loc);
                 sp.setLibraryModule(tempLibMod);
-                sp.setFeature_peptide(true);
-                sp.setSpecies_unique(true);
                 Spectrum tempSpectrum = peptideDAO.searchSpectrum(
                         spectrum.getPtm_sequence(), spectrum.getModule().getMod_id(), spectrum.getCharge_state());
                 sp.setSpectrum(tempSpectrum);
@@ -713,6 +715,8 @@ public class SpectraUpdate {
      */
     private static void addPTMTypes() {
         PeptideDAO peptideDAO = DAOObject.getInstance().getPeptideDAO();
+
+        // simple modification mass values
         HashMap<Integer, Double> map = new HashMap<>(8);
         map.put(1, 57.02000);
         map.put(2, 42.01000);
@@ -723,6 +727,7 @@ public class SpectraUpdate {
         map.put(64, 39.99492);
         map.put(128, -17.03000);
 
+        // simple modification names
         HashMap<Integer, String> map2 = new HashMap<>(8);
         map2.put(1, "Carbamidomethylation;");
         map2.put(2, "Acetylation;");
@@ -733,6 +738,7 @@ public class SpectraUpdate {
         map2.put(64, "Pyro-carbamidomethyl;");
         map2.put(128, "Pyro-glu;");
 
+        // simple modification amino acids
         HashMap<Integer, String> map3 = new HashMap<>(8);
         map3.put(1, "C,K,H;");
         map3.put(2, "K,N-term;");
@@ -753,8 +759,8 @@ public class SpectraUpdate {
             double mass = 0.0;
             int counter = 0;
 
+            // use binary to determine which of the simple ptm types to add together
             String binary = Integer.toString(i, 2);
-            System.out.println(binary);
             char[] arr = binary.toCharArray();
             for (int x = arr.length - 1; x >= 0; x--) {
                 if (arr[x] == '1') {
