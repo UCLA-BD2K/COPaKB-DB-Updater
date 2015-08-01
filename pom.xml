@@ -22,6 +22,36 @@
         </repository>
     </repositories>
 
+    <build>
+    <plugins>
+        <!-- Make this jar executable -->
+        <plugin>
+            <artifactId>maven-assembly-plugin</artifactId>
+            <executions>
+                <execution>
+                    <phase>package</phase>
+                    <goals>
+                        <goal>single</goal>
+                    </goals>
+                </execution>
+            </executions>
+            <configuration>
+                <finalName>COPaKB-DB-Updater</finalName>
+                <archive>
+                    <manifest>
+                        <mainClass>org.copakb.updater.DBUpdate</mainClass>
+                    </manifest>
+                </archive>
+                <descriptorRefs>
+                    <descriptorRef>jar-with-dependencies</descriptorRef>
+                </descriptorRefs>
+            </configuration>
+        </plugin>
+
+    </plugins>
+    </build>
+
+
     <dependencies>
 
         <!-- Spring Framework-->

@@ -21,7 +21,7 @@ import java.util.List;
  */
 public class DiseaseUpdate {
 
-    private final static int TOTALGENES = 2000;
+    private final static int TOTALGENES = 58397;
     private final static int CAPACITY = 100;
     private final static String apiKey = "030D6F97830E4C3BB0EB93407A1EC93F66887C80";
     private final static String format = "json";
@@ -62,6 +62,7 @@ public class DiseaseUpdate {
 
     public static JSONObject getJSON(String uri){
         uri+="&apiKey="+apiKey+"&format="+format;
+        uri = uri.replaceAll(" ", "%20");
 
         HttpResponse<JsonNode> request = null;
         try {
@@ -107,9 +108,15 @@ public class DiseaseUpdate {
             }
         }
 
-        diseaseGene.setPubmed_author(reference.getString("authors"));
-        diseaseGene.setPubmed_id(String.valueOf(reference.getInt("pubmedID")));
-        diseaseGene.setPubmed_title(reference.getString("title"));
+        // in case no entry has all the values
+        try {
+            diseaseGene.setPubmed_author(reference.getString("authors"));
+            diseaseGene.setPubmed_id(String.valueOf(reference.getInt("pubmedID")));
+            diseaseGene.setPubmed_title(reference.getString("title"));
+        }
+        catch (Exception e) {
+            System.out.println("Could not find referenced literature");
+        }
 
         return diseaseGene;
     }
@@ -185,6 +192,9 @@ public class DiseaseUpdate {
                     catch(Exception ex) {
                         ex.printStackTrace();
                     }
+
+                    // default is false, until curation
+                    disease.setHeart_disease(false);
 
                     diseases.add(disease);
                 }

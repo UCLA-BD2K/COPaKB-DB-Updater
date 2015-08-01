@@ -358,7 +358,10 @@ public class ProteinUpdate {
                         .getElementsByTagName("gene").item(0))
                         .getElementsByTagName("name").item(0)
                         .getTextContent());
-                gene.setEnsembl_id(String.join(", ", geneIDs));
+                String ensembl_id = String.join(", ", geneIDs);
+                if(ensembl_id.length() >= 253)
+                    ensembl_id = ensembl_id.substring(0,252);
+                gene.setEnsembl_id(ensembl_id);
 
                 genes.add(gene);
             }
@@ -547,8 +550,6 @@ public class ProteinUpdate {
                     spectrumProteinHistory.setSpectrum_id(spectrumProtein.getSpectrum().getSpectrum_id());
                     spectrumProteinHistory.setVersion(version);
                     spectrumProteinHistory.setProtein_acc(spectrumProtein.getProtein().getProtein_acc());
-                    spectrumProteinHistory.setFeature_peptide(spectrumProtein.isFeature_peptide());
-                    spectrumProteinHistory.setSpecies_unique(spectrumProtein.isSpecies_unique());
                     spectrumProteinHistory.setLibraryModule(spectrumProtein.getLibraryModule().getMod_id());
                     spectrumProteinHistory.setLocation(spectrumProtein.getLocation());
                     spectrumProteinHistory.setPrevAA(spectrumProtein.getPrevAA());

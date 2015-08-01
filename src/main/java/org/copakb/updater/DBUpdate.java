@@ -1,6 +1,7 @@
 package org.copakb.updater;
 
 import org.apache.commons.cli.*;
+import org.apache.commons.cli.DefaultParser;
 import org.copakb.server.dao.DAOObject;
 import org.copakb.server.dao.model.Version;
 import org.copakb.updater.disease.DiseaseUpdate;
@@ -68,7 +69,7 @@ public class DBUpdate {
                 .longOpt("spectra")
                 .desc("Update Spectra from COPA file")
                 .hasArgs()
-                .argName("file> <module ID> <instrument> <enzyme")
+                .argName("file> [module ID] <instrument> <enzyme")
                 .build();
         optionGroup.addOption(optSpectra);
 
@@ -137,7 +138,8 @@ public class DBUpdate {
                     }
                 });
 
-
+                SpectraUpdate.updateUniqueStates();
+                SpectraUpdate.updateFeatureStates();
             }
             catch (Exception e) {
                 e.printStackTrace();
@@ -206,6 +208,9 @@ public class DBUpdate {
                         }
                     }
                 });
+
+                SpectraUpdate.updateUniqueStates();
+                SpectraUpdate.updateFeatureStates();
             }
             catch (Exception e) {
                 e.printStackTrace();
