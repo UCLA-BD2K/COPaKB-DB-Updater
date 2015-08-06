@@ -4,6 +4,43 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>2.3.2</version>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+            <!-- Make this jar executable -->
+            <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <finalName>COPaKB-DB-Updater</finalName>
+                    <archive>
+                        <manifest>
+                            <mainClass>org.copakb.updater.DBUpdate</mainClass>
+                        </manifest>
+                    </archive>
+                    <descriptorRefs>
+                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                    </descriptorRefs>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
     <properties>
         <spring.version>4.0.5.RELEASE</spring.version>
         <hibernate.version>4.3.5.Final</hibernate.version>
@@ -21,36 +58,6 @@
             <url>http://www.ebi.ac.uk/~maven/m2repo</url>
         </repository>
     </repositories>
-
-    <build>
-    <plugins>
-        <!-- Make this jar executable -->
-        <plugin>
-            <artifactId>maven-assembly-plugin</artifactId>
-            <executions>
-                <execution>
-                    <phase>package</phase>
-                    <goals>
-                        <goal>single</goal>
-                    </goals>
-                </execution>
-            </executions>
-            <configuration>
-                <finalName>COPaKB-DB-Updater</finalName>
-                <archive>
-                    <manifest>
-                        <mainClass>org.copakb.updater.DBUpdate</mainClass>
-                    </manifest>
-                </archive>
-                <descriptorRefs>
-                    <descriptorRef>jar-with-dependencies</descriptorRef>
-                </descriptorRefs>
-            </configuration>
-        </plugin>
-
-    </plugins>
-    </build>
-
 
     <dependencies>
 
@@ -90,12 +97,6 @@
             <groupId>mysql</groupId>
             <artifactId>mysql-connector-java</artifactId>
             <version>5.1.6</version>
-        </dependency>
-
-        <dependency>
-            <groupId>uk.ac.ebi.uniprot.kraken</groupId>
-            <artifactId>uniprotjapi</artifactId>
-            <version>2015.05</version>
         </dependency>
 
         <dependency>
