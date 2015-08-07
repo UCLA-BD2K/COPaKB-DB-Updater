@@ -67,4 +67,9 @@ public class ProteinUpdateTest {
 
         // TODO Verify add
     }
+
+    @Test
+    public void testUpdateGenes() throws Exception {
+        ProteinUpdate.updateGenes();
+    }
 }

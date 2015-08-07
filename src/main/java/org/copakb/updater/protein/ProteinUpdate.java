@@ -23,7 +23,7 @@ import java.util.*;
  */
 public class ProteinUpdate {
     private static final int CHAR_BUFFER_SIZE = 8192;
-    private static final String ENSEMBL_BASE_URL = "http://rest.ensembl.org/lookup/id/";
+    private static final String ENSEMBL_BASE_URL = "http://rest.ensembl.org/lookup/";
     private static final String UNIPROT_BASE_URL = "http://www.uniprot.org/uniprot/";
 
     private static final Boolean PRINT_FAILED = true;
@@ -352,8 +352,8 @@ public class ProteinUpdate {
 
             // Add single gene with UniProt gene name and concatenated gene IDs
             Set<Gene> genes = new HashSet<>();
-            Gene gene = new Gene();
             try {
+                Gene gene = new Gene();
                 gene.setGene_name(((Element) proteinElement
                         .getElementsByTagName("gene").item(0))
                         .getElementsByTagName("name").item(0)
@@ -410,6 +410,33 @@ public class ProteinUpdate {
                 species = proteinDAO.searchSpecies(speciesName);
             }
             protein.setSpecies(species);
+
+            // Get gene(s)
+            Set<Gene2> geneSet = new HashSet<>();
+            NodeList geneNames = ((Element) proteinElement
+                    .getElementsByTagName("gene").item(0))
+                    .getElementsByTagName("name");
+            for (int geneNamesIndex = 0; geneNamesIndex < geneNames.getLength(); geneNamesIndex ++) {
+                String geneSymbol = geneNames.item(geneNamesIndex).getTextContent();
+                Gene2 gene = getGeneFromSymbol(species, geneSymbol);
+
+                // Try dashing the last digit
+                if (gene == null && Character.isDigit(geneSymbol.charAt(geneSymbol.length() - 1))) {
+                    geneSymbol = geneSymbol.substring(0, geneSymbol.length()-1) + "-" +
+                            geneSymbol.charAt(geneSymbol.length() - 1);
+                    gene = getGeneFromSymbol(species, geneSymbol);
+                }
+
+                if (gene != null) {
+                    geneSet.add(gene);
+                    break;
+                }
+            }
+            protein.setGene(geneSet);
+
+            if (geneSet.isEmpty()) {
+                System.err.println("No genes found for " + protein.getProtein_acc());
+            }
 
             return protein;
         }
@@ -481,6 +508,74 @@ public class ProteinUpdate {
         }
 
         return gene;
+    }
+
+    /**
+     * Gene gene from Ensembl through species and symbol.
+     *
+     * @param species Species.
+     * @param symbol Gene symbol.
+     * @return Gene object; null if not found.
+     */
+    public static Gene2 getGeneFromSymbol(Species species, String symbol) {
+        try {
+            // Generate URL
+            String speciesName = species.getSpecies_name().replaceAll(" ", "%20");
+            URL url = new URL(ENSEMBL_BASE_URL + "symbol/" + speciesName + "/" + symbol);
+
+            // Open connection
+            URLConnection connection = url.openConnection();
+            HttpURLConnection httpConnection = (HttpURLConnection) connection;
+            httpConnection.setRequestProperty("Content-Type", "text/plain; charset=utf-8");
+
+            // Validate response
+            int responseCode = httpConnection.getResponseCode();
+            if (responseCode != 200) {
+                System.err.println("Bad url: " + url);
+                return null;
+            }
+
+            // Get content
+            Reader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            char[] buffer = new char[CHAR_BUFFER_SIZE];
+            int read;
+            while ((read = reader.read(buffer, 0, buffer.length)) > 0) {
+                sb.append(buffer, 0, read);
+            }
+            reader.close();
+
+            // Get gene data
+            Gene2 gene = new Gene2();
+            String[] lines = sb.toString().split("\n");
+            for (String line : lines) {
+                if (line.startsWith("error: ")) {
+                    System.err.println(line);
+                    return null;
+                } else if (line.startsWith("display_name: ")) {
+                    // Get display name
+                    gene.setGene_symbol(line.split(" ")[1].toUpperCase());
+                } else if (line.startsWith("id: ")) {
+                    // Get Ensembl ID
+                    gene.setEnsembl_id(line.split(" ")[1]);
+                } else if (line.startsWith("seq_region_name: ")) {
+                    // Get chromosome
+                    gene.setChromosome(line.split(" ")[1]);
+                }
+            }
+            gene.setSpecies(species);
+
+            Gene2 dbGene = DAOObject.getInstance().getProteinDAO().searchGene(gene.getEnsembl_id());
+            if (dbGene != null) {
+                gene = dbGene;
+            }
+
+            return gene;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return null;
     }
 
     /**
@@ -574,5 +669,51 @@ public class ProteinUpdate {
         // if did not exist in db but now exists on uniprot, do nothing
 
         return -1; // if failed and did nothing
+    }
+
+    /**
+     * Updates all proteins with new genes.
+     */
+    public static void updateGenes() {
+        ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
+
+        int batchSize = 100;
+        int i = 0;
+        List<ProteinCurrent> proteins;
+        do {
+            proteins = proteinDAO.limitedList(i, batchSize);
+            i += batchSize;
+
+            // Iterate through proteins in batches
+            for (ProteinCurrent protein : proteins) {
+                System.out.println("Updating gene: " + protein.getProtein_acc());
+
+                // Create genes
+                String geneSymbol = protein.getGenes().iterator().next().getGene_name();
+                Species species = protein.getSpecies();
+
+                Set<Gene2> genes = new HashSet<>();
+                Gene2 gene = getGeneFromSymbol(species, geneSymbol);
+
+                // Try dashing the last digit
+                if (gene == null && Character.isDigit(geneSymbol.charAt(geneSymbol.length()-1))) {
+                    geneSymbol = geneSymbol.substring(0, geneSymbol.length()-1) + "-" +
+                            geneSymbol.charAt(geneSymbol.length() - 1);
+                    gene = getGeneFromSymbol(species, geneSymbol);
+                }
+
+                if (gene != null) {
+                    genes.add(gene);
+                }
+                protein.setGene(genes);
+
+                if (genes.isEmpty()) {
+                    System.err.println("No genes found for " + protein.getProtein_acc());
+                }
+
+                // Update proteins w/ ensembl_id
+                proteinDAO.updateProteinCurrent(protein.getProtein_acc(), protein);
+            }
+        } while (!proteins.isEmpty());
     }
 }
