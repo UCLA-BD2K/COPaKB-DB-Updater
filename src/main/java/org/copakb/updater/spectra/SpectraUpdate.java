@@ -180,6 +180,7 @@ public class SpectraUpdate {
                 specNum = dbSpectrum.getSpectrum_id();
             }
 
+            // TODO To be deprecated
             // create and save spectrum files; currently hardcoded the location
             //noinspection ResultOfMethodCallIgnored
             new File(SPECTRUM_OUTPUT_PATH).mkdir();

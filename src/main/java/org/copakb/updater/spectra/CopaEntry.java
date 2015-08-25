@@ -49,4 +49,9 @@ public class CopaEntry {
         String values[] = peak.split(" ");
         peaks.add(new double[] {Double.valueOf(values[0]), Double.valueOf(values[1])});
     }
+
+    // TODO To be deprecated
+    public void setSpectra(String spectra) {
+        fields.put("spectrum", spectra);
+    }
 }
