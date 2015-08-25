@@ -71,7 +71,7 @@ public class SpectraUpdate {
 
             String species = parsedShortName[0];
             // for shortened names such as C. Elegans, combine with next segment of file name
-            if(species.length() < 2) {
+            if (species.length() < 2) {
                 String temp = " " + parsedShortName[1];
                 species = species.concat(temp);
             }
@@ -99,12 +99,12 @@ public class SpectraUpdate {
         }
 
         CopaParser cp = new CopaParser(file);
-        HashMap copaEntry;
-        while (cp.processEntry() >= 0) {
-            copaEntry = cp.getCurrentEntry();
-            populateSpectraObject(copaEntry, mod_id);
+        CopaEntry entry = cp.next();
+        while (entry != null) {
+            populateSpectraObject(entry, mod_id);
+            entry = cp.next();
         }
-        cp.closeBuffer();
+        cp.close();
 
         System.out.println("\n\n");
         System.out.println("BEGINNING: " + dateBeg.toString());
@@ -113,21 +113,22 @@ public class SpectraUpdate {
 
     }
 
-    private static void populateSpectraObject(HashMap entry, int mod_id) {
+    private static void populateSpectraObject(CopaEntry entry, int mod_id) {
         PeptideDAO peptideDAO = DAOObject.getInstance().getPeptideDAO();
         ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
 
         System.out.println("\n********************");
-        System.out.println("PEPID: " + entry.get("PEPID"));
+        Map fields = entry.getFields();
+        System.out.println("PEPID: " + fields.get("PEPID"));
 
-        String whole_sequence = (String) entry.get("SEQ");
+        String whole_sequence = (String) fields.get("SEQ");
         String ptm_sequence = whole_sequence.substring(2, whole_sequence.length() - 2);
 
         ArrayList<String> variations = getVariations(ptm_sequence);
         for (String s : variations) {
             specNumCounter++;
 
-            if (!(entry.get("REVERSE")).equals("NotReverseHit")) {
+            if (!(fields.get("REVERSE")).equals("NotReverseHit")) {
                 reverseCounter++;
                 continue; // skip, don't add this peptide if reverse
             }
@@ -139,13 +140,13 @@ public class SpectraUpdate {
             // populate spectrum object
             Spectrum spectrum = new Spectrum();
             spectrum.setPtm_sequence(s);
-            int charge = Integer.parseInt((String) entry.get("CHARGE"));
+            int charge = Integer.parseInt((String) fields.get("CHARGE"));
             spectrum.setCharge_state(charge);
-            spectrum.setXcorr(Double.parseDouble((String) entry.get("XCORR")));
-            spectrum.setDelta_cn(Double.parseDouble((String) entry.get("DELTACN")));
-            spectrum.setZscore(Double.parseDouble((String) entry.get("ZSCORE")));
-            spectrum.setPrecursor_mz(Double.parseDouble((String) entry.get("MZ")));
-            spectrum.setRawfile_id((String) entry.get("SPECTRUMFILE"));
+            spectrum.setXcorr(Double.parseDouble((String) fields.get("XCORR")));
+            spectrum.setDelta_cn(Double.parseDouble((String) fields.get("DELTACN")));
+            spectrum.setZscore(Double.parseDouble((String) fields.get("ZSCORE")));
+            spectrum.setPrecursor_mz(Double.parseDouble((String) fields.get("MZ")));
+            spectrum.setRawfile_id((String) fields.get("SPECTRUMFILE"));
             double fdr = ((double) reverseCounter) / ((double) specNumCounter);
             spectrum.setFdr(fdr);
 
@@ -185,8 +186,8 @@ public class SpectraUpdate {
             String fileName = SPECTRUM_OUTPUT_PATH + specNum + ".txt";
             try {
                 BufferedWriter writer = new BufferedWriter(new FileWriter(new File(fileName)));
-                writer.write(entry.get("header") + "\n");
-                writer.write(entry.get("spectrum").toString());
+                writer.write(fields.get("header") + "\n");
+                writer.write(fields.get("spectrum").toString());
                 writer.close();
             } catch (Exception e) {
                 e.printStackTrace();
@@ -196,7 +197,7 @@ public class SpectraUpdate {
             SpectrumProtein sp = new SpectrumProtein();
             sp.setPrevAA(whole_sequence.charAt(0));
             sp.setNextAA(whole_sequence.charAt(whole_sequence.length() - 1));
-            String proteins = entry.get("UNIPROTIDS").toString();
+            String proteins = fields.get("UNIPROTIDS").toString();
 
             String[] tokens = proteins.split(";");
 
@@ -333,7 +334,6 @@ public class SpectraUpdate {
      * 1 | 7 | 7 | 0 <p>
      * 1 | 7 | 7 | 0 <p>
      * 1 | 6 | 6 | 1 <p>
-     *
      */
     public static void updateUniqueStates() {
         PeptideDAO peptideDAO = DAOObject.getInstance().getPeptideDAO();
@@ -385,7 +385,6 @@ public class SpectraUpdate {
      * 2 | 1 | 1 | 0 <p>
      * 2 | 1 | 2 | 0 <p>
      * 1 | 2 | 1 | 1 <p>
-     *
      */
     public static void updateFeatureStates() {
         PeptideDAO peptideDAO = DAOObject.getInstance().getPeptideDAO();
@@ -622,7 +621,6 @@ public class SpectraUpdate {
 
         // return the (molecular weight + weight of water + charge)/charge
         result[1] = (th_mz + 18.0152 + charge) / charge;
-        //System.out.println(result[1]);
         return result;
     }
 
@@ -661,7 +659,6 @@ public class SpectraUpdate {
             } else if (aa == ')' && tempPtmType.length() > 1) {
                 // At end of sequence, check the PTM type based on the value and add to total type number
                 double ptmVal = Double.parseDouble(tempPtmType);
-                System.out.println(ptmVal);
                 if (!carb && withinRange(ptmVal, 57.020000, range)) { // Carbamidomethylation
                     result += 1;
                     carb = true;
@@ -765,7 +762,6 @@ public class SpectraUpdate {
             for (int x = arr.length - 1; x >= 0; x--) {
                 if (arr[x] == '1') {
                     int key = (int) Math.pow(2, counter);
-                    System.out.println(key);
                     mod += map2.get(key);
                     res += map3.get(key);
                     mass += map.get(key);
@@ -777,23 +773,5 @@ public class SpectraUpdate {
 
             peptideDAO.addPtmType(new PTM_type(i, mod, res, mass, null));
         }
-    }
-
-    public static void main(String[] args) {
-        /*String s = "p1;";
-        String[] tokens = s.split(";");
-        for (String token : tokens) {
-            System.out.println(token);
-        }*/
-
-        update("./src/main/resources/copa_to_do/human_whole_heart_lysate_1234.copa", -1, "LTQ", "Trypsin");
-
-        //updateUniqueStates();
-
-        //updateFeatureStates();
-
-        //parsePtmSequence("(42.0106)VNKVIEINPYLLGTM(15.9949)SGCAADCQYWER");
-
-        //addPtm_Types();
     }
 }
