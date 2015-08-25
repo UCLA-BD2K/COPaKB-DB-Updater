@@ -3,6 +3,7 @@ package org.copakb.updater.spectra;
 import org.copakb.server.dao.DAOObject;
 import org.copakb.server.dao.PeptideDAO;
 import org.copakb.server.dao.ProteinDAO;
+import org.copakb.server.dao.SpectrumDAO;
 import org.copakb.server.dao.model.*;
 import org.copakb.updater.protein.ProteinUpdate;
 import org.xml.sax.SAXException;
@@ -178,6 +179,14 @@ public class SpectraUpdate {
                 specNum = peptideDAO.addSpectrum(spectrum);
             } else {
                 specNum = dbSpectrum.getSpectrum_id();
+            }
+
+            // Add Mongo entry if necessary
+            SpectrumDAO spectrumDAO = DAOObject.getInstance().getSpectrumDAO();
+            if (spectrumDAO.searchBySpecID(specNum) == null) {
+                spectrum.setSpectrum_id(specNum);
+                spectrum.setPeaks((double[][]) entry.getPeaks().toArray(new double[entry.getPeaks().size()][]));
+                spectrumDAO.addSpectraInfo(spectrum);
             }
 
             // TODO To be deprecated

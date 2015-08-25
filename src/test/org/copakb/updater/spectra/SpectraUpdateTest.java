@@ -2,14 +2,12 @@ package org.copakb.updater.spectra;
 
 import org.junit.Test;
 
-import static org.junit.Assert.*;
-
 /**
  * SpectraUpdate test class.
  * Created by Alan on 7/6/2015.
  */
 public class SpectraUpdateTest {
-    private final String COPA_TEST_FILE = "src/test/resources/test.copa";
+    private final String COPA_TEST_FILE = "src/test/resources/test_testmodule.copa";
 
     @Test
     public void testUpdate() throws Exception {
