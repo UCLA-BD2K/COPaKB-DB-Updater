@@ -9,7 +9,7 @@ import org.copakb.updater.protein.ProteinUpdate;
 import org.xml.sax.SAXException;
 
 import javax.xml.parsers.ParserConfigurationException;
-import java.io.*;
+import java.io.IOException;
 import java.util.*;
 
 /**
@@ -17,9 +17,6 @@ import java.util.*;
  * Created by vincekyi on 6/11/15.
  */
 public class SpectraUpdate {
-
-    private final static String SPECTRUM_OUTPUT_PATH = "target/Spectra_Files/";
-
     private static int specNumCounter = 0;
     private static int reverseCounter = 0;
 
@@ -185,22 +182,11 @@ public class SpectraUpdate {
             SpectrumDAO spectrumDAO = DAOObject.getInstance().getSpectrumDAO();
             if (spectrumDAO.searchBySpecID(specNum) == null) {
                 spectrum.setSpectrum_id(specNum);
-                spectrum.setPeaks((double[][]) entry.getPeaks().toArray(new double[entry.getPeaks().size()][]));
+                spectrum.setPeaks(entry.getPeaks().toArray(new double[entry.getPeaks().size()][]));
+                spectrum.setPeptide_sequence(peptide_sequence);
+                spectrum.setMod_lib(tempLibMod.getOrganelle());
+                spectrum.setSpecies(tempLibMod.getSpecies().getSpecies_name());
                 spectrumDAO.addSpectraInfo(spectrum);
-            }
-
-            // TODO To be deprecated
-            // create and save spectrum files; currently hardcoded the location
-            //noinspection ResultOfMethodCallIgnored
-            new File(SPECTRUM_OUTPUT_PATH).mkdir();
-            String fileName = SPECTRUM_OUTPUT_PATH + specNum + ".txt";
-            try {
-                BufferedWriter writer = new BufferedWriter(new FileWriter(new File(fileName)));
-                writer.write(fields.get("header") + "\n");
-                writer.write(fields.get("spectrum").toString());
-                writer.close();
-            } catch (Exception e) {
-                e.printStackTrace();
             }
 
             // Spectrum Protein
@@ -499,25 +485,6 @@ public class SpectraUpdate {
         return peptide;
     }
 
-    private static void storeSpectraInFile(String spectra, String filename) {
-        Writer writer = null;
-
-        try {
-            writer = new BufferedWriter(new OutputStreamWriter(
-                    new FileOutputStream(filename), "utf-8"));
-            writer.write(spectra);
-        } catch (IOException ex) {
-            ex.printStackTrace();
-            // report
-        } finally {
-            try {
-                if (writer != null) {
-                    writer.close();
-                }
-            } catch (Exception ex) {/*ignore*/}
-        }
-    }
-
     private static double[] calcMWandPrecursor(String sequence, double charge) {
         double result[] = {0, 0};
         // initialize molecular weight and theoretical precursor
@@ -636,7 +603,7 @@ public class SpectraUpdate {
 
     /**
      * Returns the PTM_type ID for a given PTM sequence.
-     *
+     * <p>
      * 1	Carbamidomethylation	C,K,H	57.02000
      * 2	Acetylation	K,N-term	42.01000
      * 4	Oxidation	M	15.99000
@@ -710,7 +677,7 @@ public class SpectraUpdate {
     /**
      * Adds PTM types.
      * Only needs to be run once in the database since the values are static
-     *
+     * <p>
      * 1	Carbamidomethylation	C,K,H	57.02000
      * 2	Acetylation	K,N-term	42.01000
      * 4	Oxidation	M	15.99000

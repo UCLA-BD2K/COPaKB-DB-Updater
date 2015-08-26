@@ -78,15 +78,11 @@ public class CopaParser {
                 // Process header fields
                 entry.processHeader(line);
                 // Process peaks
-                StringBuilder spectra = new StringBuilder(); // TODO To be deprecated
                 int firstChar;
                 while ((firstChar = reader.read()) != -1 && (char) firstChar != 'H') {
                     line = reader.readLine();
                     entry.addPeak((char) firstChar + line);
-                    spectra.append((char) firstChar);
-                    spectra.append(line).append("\n");
                 }
-                entry.setSpectra(spectra.toString());
 
                 return entry;
             }

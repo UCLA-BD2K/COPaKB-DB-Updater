@@ -31,8 +31,6 @@ public class CopaEntry {
      * @param header Header string to parse.
      */
     public void processHeader(String header) {
-        fields.put("header", header);
-
         // Isolate each field
         String tokens[] = header.split("\\|\\|\\|");
         for (int i = 1; i < tokens.length; i++) {
@@ -47,11 +45,6 @@ public class CopaEntry {
 
     public void addPeak(String peak) {
         String values[] = peak.split(" ");
-        peaks.add(new double[] {Double.valueOf(values[0]), Double.valueOf(values[1])});
-    }
-
-    // TODO To be deprecated
-    public void setSpectra(String spectra) {
-        fields.put("spectrum", spectra);
+        peaks.add(new double[]{Double.valueOf(values[0]), Double.valueOf(values[1])});
     }
 }
