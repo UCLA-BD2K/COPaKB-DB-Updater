@@ -181,12 +181,8 @@ public class SpectraUpdate {
             // Add Mongo entry if necessary
             SpectrumDAO spectrumDAO = DAOObject.getInstance().getSpectrumDAO();
             if (spectrumDAO.searchBySpecID(specNum) == null) {
-                spectrum.setSpectrum_id(specNum);
-                spectrum.setPeaks(entry.getPeaks().toArray(new double[entry.getPeaks().size()][]));
-                spectrum.setPeptide_sequence(peptide_sequence);
-                spectrum.setMod_lib(tempLibMod.getOrganelle());
-                spectrum.setSpecies(tempLibMod.getSpecies().getSpecies_name());
-                spectrumDAO.addSpectraInfo(spectrum);
+                spectrumDAO.addSpectraInfo(new SpectraDataEntry(spectrum,
+                        entry.getPeaks().toArray(new double[entry.getPeaks().size()][]), peptide_sequence));
             }
 
             // Spectrum Protein
