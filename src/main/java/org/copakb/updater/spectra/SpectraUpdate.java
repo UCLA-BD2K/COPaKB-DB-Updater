@@ -103,19 +103,12 @@ public class SpectraUpdate {
             entry = cp.next();
         }
         cp.close();
-
-        System.out.println("\n\n");
-        System.out.println("BEGINNING: " + dateBeg.toString());
-        Date dateEnd = new Date();
-        System.out.println("ENDING: " + dateEnd.toString());
-
     }
 
     private static void populateSpectraObject(CopaEntry entry, int mod_id) {
         PeptideDAO peptideDAO = DAOObject.getInstance().getPeptideDAO();
         ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
 
-        System.out.println("\n********************");
         Map fields = entry.getFields();
         System.out.println("PEPID: " + fields.get("PEPID"));
 
@@ -181,6 +174,7 @@ public class SpectraUpdate {
             // Add Mongo entry if necessary
             SpectrumDAO spectrumDAO = DAOObject.getInstance().getSpectrumDAO();
             if (spectrumDAO.searchBySpecID(specNum) == null) {
+                spectrum.setSpectrum_id(specNum);
                 spectrumDAO.addSpectraInfo(new SpectraDataEntry(spectrum,
                         entry.getPeaks().toArray(new double[entry.getPeaks().size()][]), peptide_sequence));
             }
@@ -234,28 +228,30 @@ public class SpectraUpdate {
 
             for (String token : tokensToAdd) {
                 prot = proteinDAO.searchByID(token);
+
+                // Get and add protein if not in database
                 if (prot == null) {
                     try {
-                        // Get and add protein if not in database
                         prot = ProteinUpdate.getProteinFromUniprot(token);
                         if (prot != null) {
                             //prot.setDbRef(null);
                             try {
                                 proteinDAO.addProteinCurrent(prot);
                             } catch (Exception e) {
-                                System.out.println("Could not add protein: " + token);
+                                System.err.println("Could not add protein: " + token);
                                 e.printStackTrace();
                             }
                         }
                     } catch (IOException | ParserConfigurationException | SAXException e) {
                         e.printStackTrace();
                     }
+
+                    if (prot == null) {
+                        System.err.println("Cannot retrieve protein: " + token);
+                        continue;
+                    }
                 }
 
-                if (prot == null) {
-                    System.out.println("Could not add SpectrumProtein: " + token);
-                    continue;
-                }
                 protSeq = prot.getSequence();
 
                 String tempPtmSeq = ptm_sequence.replaceAll("[^A-Za-z]", "");
@@ -273,13 +269,14 @@ public class SpectraUpdate {
                     proteinDAO.addSpectrumProtein(sp);
                     System.out.println("Added: " + sp.getProtein().getProtein_acc());
                 } catch (Exception e) {
-                    System.out.println("Could not add SpectrumProtein: " + token);
+                    System.err.println("Could not add SpectrumProtein: " + token);
                     e.printStackTrace();
                 }
             }
 
-            if (tokensToDelete == null)
+            if (tokensToDelete == null) {
                 continue;
+            }
 
             // TODO: FOR FIRST RUN, ADD EVERYTHING, UPDATE FEATURE IS CURRENTLY DISABLED
             // delete all spectrum protein objects that are in database but no longer in COPA file
