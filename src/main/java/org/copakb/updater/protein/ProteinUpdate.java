@@ -51,36 +51,9 @@ public class ProteinUpdate {
                     // Get UniProt ID from header line
                     String uniprotID = line.substring(4, line.indexOf("|", 4));
 
-                    // Get protein
-                    ProteinCurrent protein;
-                    try {
-                        protein = getProteinFromUniprot(uniprotID);
-
-                        int check = checkAndUpdateHistories(uniprotID, protein);
-
-                        if (check == 0) { // already exists and no changes
-                            System.out.println(uniprotID + " is up to date.");
-                        } else if (check == 1) { // updated protein and protein history
-                            System.out.println(uniprotID + " was updated.");
-                        } else if (check == 2) { // exists in db but was deleted from uniprot
-                            System.out.println(uniprotID + " was deleted.");
-                        } else if (check != -1) {
-                            continue;
-                        }
-
-                        // else if check failed or protein now exists and didn't before, proceed to add as normal
-
-                    } catch (IOException | SAXException | ParserConfigurationException e) {
-                        protein = null;
-                    }
-
-                    // Add to database
-                    if (protein == null || !addProtein(protein)) {
-                        System.err.println(uniprotID + " retrieval and update failed.");
-                        if (PRINT_FAILED) {
-                            writer.println(uniprotID);
-                        }
-                        continue;
+                    // Get and add protein
+                    if (!addProtein(uniprotID) && PRINT_FAILED) {
+                        writer.println(uniprotID);
                     }
 
                     System.out.println(uniprotID + " added.");
@@ -115,35 +88,9 @@ public class ProteinUpdate {
             while (sc.hasNextLine()) {
                 String uniprotID = sc.nextLine();
 
-                // Get protein
-                ProteinCurrent protein;
-                try {
-                    protein = getProteinFromUniprot(uniprotID);
-
-                    int check = checkAndUpdateHistories(uniprotID, protein);
-
-                    if (check == 0) { // already exists and no changes
-                        System.out.println(uniprotID + " is up to date.");
-                    } else if (check == 1) { // updated protein and protein history
-                        System.out.println(uniprotID + " was updated.");
-                    } else if (check == 2) { // exists in db but was deleted from uniprot
-                        System.out.println(uniprotID + " was deleted.");
-                    } else if (check != -1) {
-                        continue;
-                    }
-
-                    // else if check failed or protein now exists and didn't before, proceed to add as normal
-                } catch (IOException | SAXException | ParserConfigurationException e) {
-                    protein = null;
-                }
-
-                // Add to database
-                if (protein == null || !addProtein(protein)) {
-                    System.err.println(uniprotID + " retrieval failed.");
-                    if (PRINT_FAILED) {
-                        writer.println(uniprotID);
-                    }
-                    continue;
+                // Get and add protein
+                if (!addProtein(uniprotID) && PRINT_FAILED) {
+                    writer.println(uniprotID);
                 }
 
                 System.out.println(uniprotID + " added.");
@@ -164,7 +111,7 @@ public class ProteinUpdate {
      * Returns the ProteinCurrent for a UniProt ID
      *
      * @param uniprotID UniProt ID to get
-     * @return ProteinCurrent
+     * @return ProteinCurrent; null if not found
      */
     public static ProteinCurrent getProteinFromUniprot(String uniprotID)
             throws IOException, ParserConfigurationException, SAXException {
@@ -179,7 +126,7 @@ public class ProteinUpdate {
         // Validate response
         int responseCode = httpConnection.getResponseCode();
         if (responseCode != 200) {
-            System.err.println("Bad url: " + url);
+            System.err.println("No UniProt entry: " + url);
             return null;
         }
 
@@ -199,7 +146,7 @@ public class ProteinUpdate {
 
         ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
 
-        try { // return null if something fails with retrieving uniprot
+        try {
             // Parse XML
             Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
                     .parse(new InputSource(new StringReader(sb.toString())));
@@ -413,101 +360,84 @@ public class ProteinUpdate {
 
             // Get gene(s)
             Set<Gene2> geneSet = new HashSet<>();
-            NodeList geneNames = ((Element) proteinElement
-                    .getElementsByTagName("gene").item(0))
-                    .getElementsByTagName("name");
-            for (int geneNamesIndex = 0; geneNamesIndex < geneNames.getLength(); geneNamesIndex ++) {
-                String geneSymbol = geneNames.item(geneNamesIndex).getTextContent();
-                Gene2 gene = getGeneFromSymbol(species, geneSymbol);
+            NodeList geneNodes = proteinElement.getElementsByTagName("gene");
+            if (geneNodes != null && geneNodes.getLength() > 0) {
+                NodeList geneNames = ((Element) geneNodes.item(0)).getElementsByTagName("name");
+                // Iterate through possible names
+                for (int geneNamesIndex = 0; geneNamesIndex < geneNames.getLength(); geneNamesIndex++) {
+                    String geneSymbol = geneNames.item(geneNamesIndex).getTextContent();
+                    Gene2 gene = getGeneFromSymbol(species, geneSymbol);
 
-                // Try dashing the last digit
-                if (gene == null && Character.isDigit(geneSymbol.charAt(geneSymbol.length() - 1))) {
-                    geneSymbol = geneSymbol.substring(0, geneSymbol.length()-1) + "-" +
-                            geneSymbol.charAt(geneSymbol.length() - 1);
-                    gene = getGeneFromSymbol(species, geneSymbol);
+                    // Try dashing the last digit (necessary for C. elegans: atp -> atp-6)
+                    if (gene == null && Character.isDigit(geneSymbol.charAt(geneSymbol.length() - 1))) {
+                        geneSymbol = geneSymbol.substring(0, geneSymbol.length() - 1) + "-" +
+                                geneSymbol.charAt(geneSymbol.length() - 1);
+                        gene = getGeneFromSymbol(species, geneSymbol);
+                    }
+
+                    if (gene != null) {
+                        geneSet.add(gene);
+                        break;
+                    }
                 }
+                protein.setGene(geneSet);
 
-                if (gene != null) {
-                    geneSet.add(gene);
-                    break;
+                if (geneSet.isEmpty()) {
+                    System.err.println("No genes found for " + protein.getProtein_acc());
                 }
-            }
-            protein.setGene(geneSet);
-
-            if (geneSet.isEmpty()) {
-                System.err.println("No genes found for " + protein.getProtein_acc());
             }
 
             return protein;
         }
         catch (Exception e) {
             e.printStackTrace();
-            return null;
         }
+
+        return null;
     }
 
     /**
      * Attempts to add a protein to the database.
      *
-     * @param protein ProteinCurrent to add
+     * @param uniprotID UniProt ID of protein to add.
      * @return Returns True if add successful or protein already exists.
      */
-    public static Boolean addProtein(ProteinCurrent protein) {
+    public static Boolean addProtein(String uniprotID) {
         ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
-        // Attempt to add the protein
+
+        // Get protein
+        ProteinCurrent protein = null;
+        try {
+            protein = getProteinFromUniprot(uniprotID);
+        } catch (IOException | ParserConfigurationException | SAXException e) {
+            e.printStackTrace();
+        }
+
+        if (protein == null) {
+            return false;
+        }
+
+        int check = checkAndUpdateHistories(uniprotID, protein);
+
+        if (check == 0) { // Already exists and no changes
+            System.out.println(uniprotID + " is up to date.");
+        } else if (check == 1) { // Updated protein and protein history
+            System.out.println(uniprotID + " was updated.");
+        } else if (check == 2) { // Exists in db but was deleted from UniProt
+            System.out.println(uniprotID + " was deleted.");
+        } else if (check != -1) {
+            return false;
+        }
+
+        // Add to database
         String result = proteinDAO.addProteinCurrent(protein);
-
-        // Process result
-        return !(result.isEmpty() || result.equals("Failed"));
-    }
-
-    /**
-     * Returns the Gene for an Ensembl ID
-     *
-     * @param ensemblID Ensembl ID to lookup
-     * @return Gene object with name, id, and chromosome
-     * @throws IOException
-     */
-    public static Gene getGeneFromEnsembl(String ensemblID) throws IOException {
-        // Generate URL
-        URL url = new URL(ENSEMBL_BASE_URL + ensemblID);
-
-        // Open connection
-        URLConnection connection = url.openConnection();
-        HttpURLConnection httpConnection = (HttpURLConnection) connection;
-        httpConnection.setRequestProperty("Content-Type", "text/plain; charset=utf-8");
-
-        // Validate response
-        int responseCode = httpConnection.getResponseCode();
-        if (responseCode != 200) {
-            System.err.println("Bad url: " + url);
-            return null;
+        if (result.isEmpty() || result.equals("Failed")) {
+            System.err.println(uniprotID + " retrieval and update failed.");
+            return false;
         }
 
-        // Get content
-        Reader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
-        StringBuilder sb = new StringBuilder();
-        char[] buffer = new char[CHAR_BUFFER_SIZE];
-        int read;
-        while ((read = reader.read(buffer, 0, buffer.length)) > 0) {
-            sb.append(buffer, 0, read);
-        }
-        reader.close();
-
-        // Get gene data
-        Gene gene = new Gene();
-        gene.setEnsembl_id(ensemblID);
-        String[] lines = sb.toString().split("\n");
-        for (String line : lines) {
-            if (line.startsWith("error: ")) {
-                throw new RuntimeException(line);
-            } else if (line.startsWith("display_name: ")) {
-                // Get display name
-                gene.setGene_name(line.split(" ")[1]);
-            }
-        }
-
-        return gene;
+        System.out.println(uniprotID + " added.");
+        return true;
     }
 
     /**
@@ -520,7 +450,7 @@ public class ProteinUpdate {
     public static Gene2 getGeneFromSymbol(Species species, String symbol) {
         try {
             // Generate URL
-            String speciesName = species.getSpecies_name().replaceAll(" ", "%20");
+            String speciesName = species.getSpecies_name().replaceAll(" ", "%20"); // Format species name for URL
             URL url = new URL(ENSEMBL_BASE_URL + "symbol/" + speciesName + "/" + symbol);
 
             // Open connection
@@ -531,7 +461,7 @@ public class ProteinUpdate {
             // Validate response
             int responseCode = httpConnection.getResponseCode();
             if (responseCode != 200) {
-                System.err.println("Bad url: " + url);
+                System.err.println("No Ensembl entry: " + url);
                 return null;
             }
 
@@ -554,7 +484,7 @@ public class ProteinUpdate {
                     return null;
                 } else if (line.startsWith("display_name: ")) {
                     // Get display name
-                    gene.setGene_symbol(line.split(" ")[1].toUpperCase());
+                    gene.setGene_symbol(line.split(" ")[1]);
                 } else if (line.startsWith("id: ")) {
                     // Get Ensembl ID
                     gene.setEnsembl_id(line.split(" ")[1]);
@@ -674,6 +604,7 @@ public class ProteinUpdate {
     /**
      * Updates all proteins with new genes.
      */
+    @Deprecated
     public static void updateGenes() {
         ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
 
@@ -689,7 +620,12 @@ public class ProteinUpdate {
                 System.out.println("Updating gene: " + protein.getProtein_acc());
 
                 // Create genes
-                String geneSymbol = protein.getGenes().iterator().next().getGene_name();
+                if (protein.getGenes() == null || protein.getGenes().isEmpty()) {
+                    continue;
+                }
+
+                Gene oldGene = protein.getGenes().iterator().next();
+                String geneSymbol = oldGene.getGene_name();
                 Species species = protein.getSpecies();
 
                 Set<Gene2> genes = new HashSet<>();
@@ -702,6 +638,11 @@ public class ProteinUpdate {
                     gene = getGeneFromSymbol(species, geneSymbol);
                 }
 
+                // TODO Try old Ensembl IDs
+//                String[] geneRefs = oldGene.getEnsembl_id().split(", ");
+//                for (int j = 0; j < geneRefs.length; j++) {
+//                }
+
                 if (gene != null) {
                     genes.add(gene);
                 }
@@ -712,7 +653,7 @@ public class ProteinUpdate {
                 }
 
                 // Update proteins w/ ensembl_id
-                proteinDAO.updateProteinCurrent(protein.getProtein_acc(), protein);
+                // proteinDAO.updateProteinCurrent(protein.getProtein_acc(), protein);
             }
         } while (!proteins.isEmpty());
     }
