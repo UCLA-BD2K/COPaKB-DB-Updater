@@ -55,8 +55,6 @@ public class ProteinUpdate {
                     if (!addProtein(uniprotID) && PRINT_FAILED) {
                         writer.println(uniprotID);
                     }
-
-                    System.out.println(uniprotID + " added.");
                 }
             }
 
@@ -92,8 +90,6 @@ public class ProteinUpdate {
                 if (!addProtein(uniprotID) && PRINT_FAILED) {
                     writer.println(uniprotID);
                 }
-
-                System.out.println(uniprotID + " added.");
             }
 
             if (writer != null) {

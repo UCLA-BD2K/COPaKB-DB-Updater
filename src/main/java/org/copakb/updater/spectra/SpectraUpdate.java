@@ -17,6 +17,7 @@ import java.util.*;
  * Created by vincekyi on 6/11/15.
  */
 public class SpectraUpdate {
+    private static final int MAX_UNIPROT_ATTEMPTS = 3;
     private static int specNumCounter = 0;
     private static int reverseCounter = 0;
 
@@ -230,7 +231,7 @@ public class SpectraUpdate {
                 prot = proteinDAO.searchByID(token);
 
                 // Get and add protein if not in database
-                if (prot == null) {
+                for (int tries = 0; prot == null && tries < MAX_UNIPROT_ATTEMPTS; tries++) {
                     try {
                         prot = ProteinUpdate.getProteinFromUniprot(token);
                         if (prot != null) {
@@ -245,13 +246,13 @@ public class SpectraUpdate {
                     } catch (IOException | ParserConfigurationException | SAXException e) {
                         e.printStackTrace();
                     }
-
-                    if (prot == null) {
-                        System.err.println("Cannot retrieve protein: " + token);
-                        continue;
-                    }
                 }
 
+                // Protein retrieval failed
+                if (prot == null) {
+                    System.err.println("Cannot retrieve protein: " + token);
+                    continue;
+                }
                 protSeq = prot.getSequence();
 
                 String tempPtmSeq = ptm_sequence.replaceAll("[^A-Za-z]", "");
