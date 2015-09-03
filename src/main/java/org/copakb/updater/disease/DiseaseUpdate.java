@@ -6,9 +6,7 @@ import com.mashape.unirest.http.Unirest;
 import com.mashape.unirest.http.exceptions.UnirestException;
 import org.copakb.server.dao.DAOObject;
 import org.copakb.server.dao.DiseaseDAO;
-import org.copakb.server.dao.model.Disease;
-import org.copakb.server.dao.model.DiseaseGene;
-import org.copakb.server.dao.model.Gene;
+import org.copakb.server.dao.model.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -53,6 +51,24 @@ public class DiseaseUpdate {
             genes = diseaseDAO.limitedGeneList(geneIndex, BATCH_SIZE);
             geneIndex += BATCH_SIZE;
         }
+
+        // Iterate through gene2
+        int geneIndex2 = 0;
+        List<Gene2> genes2 = diseaseDAO.limitedGene2List(geneIndex2, BATCH_SIZE);
+        while (!genes2.isEmpty()) {
+            for (Gene2 gene : genes2) {
+                System.out.println("**********************");
+                System.out.println("FOR GENE: " + gene.getGene_symbol() + "\n");
+                for (Disease disease : getDiseases(gene.getGene_symbol())) {
+                    System.out.println("Adding: " + disease.getDOID());
+                    diseaseDAO.addDisease(disease);
+                    diseaseDAO.addDiseaseGene2(getDiseaseGene2(disease, gene));
+                }
+            }
+
+            genes2 = diseaseDAO.limitedGene2List(geneIndex2, BATCH_SIZE);
+            geneIndex2 += BATCH_SIZE;
+        }
     }
 
     public static JSONObject getJSON(String uri) {
@@ -83,6 +99,49 @@ public class DiseaseUpdate {
      */
     public static DiseaseGene getDiseaseGene(Disease disease, Gene gene) {
         DiseaseGene diseaseGene = new DiseaseGene();
+        diseaseGene.setGene(gene);
+        diseaseGene.setDisease(disease);
+
+        JSONObject json = getJSON(OMIM_REF + disease.getDOID());
+
+        JSONObject omim = json.getJSONObject("omim");
+
+        // only takes first pubmed information with all necessary values
+        JSONArray referenceLists = omim.getJSONArray("referenceLists");
+        JSONArray referenceList = referenceLists.getJSONObject(0).getJSONArray("referenceList");
+        JSONObject reference = null;
+        for (int i = 0; i < referenceList.length(); i++) { // iterate until it has an entry with all values
+            reference = referenceList.getJSONObject(i).getJSONObject("reference");
+            if (reference.has("authors") && reference.has("pubmedID") && reference.has("title")) {
+                diseaseGene.setPubmed_author("");
+                diseaseGene.setPubmed_id("");
+                diseaseGene.setPubmed_title("");
+                break;
+            }
+        }
+
+        // in case no entry has all the values
+        try {
+            diseaseGene.setPubmed_author(reference.getString("authors"));
+            diseaseGene.setPubmed_id(String.valueOf(reference.getInt("pubmedID")));
+            diseaseGene.setPubmed_title(reference.getString("title"));
+        } catch (Exception e) {
+            System.out.println("Could not find referenced literature");
+        }
+
+        return diseaseGene;
+    }
+
+    /**
+     * Extracts DiseaseGene information from omim.org.
+     * Uses disease and gene information to create a DiseaseGene object which includes references and pubmed information.
+     *
+     * @param disease disease object that is used to find the DiseaseGene object
+     * @param gene    gene object that is used to find the DiseaseGene object
+     * @return defined DiseaseGene2 object that is mapped by the combination of the disease and gene parameters
+     */
+    public static DiseaseGene2 getDiseaseGene2(Disease disease, Gene2 gene) {
+        DiseaseGene2 diseaseGene = new DiseaseGene2();
         diseaseGene.setGene(gene);
         diseaseGene.setDisease(disease);
 
