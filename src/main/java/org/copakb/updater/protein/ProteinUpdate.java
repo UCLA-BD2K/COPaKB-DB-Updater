@@ -159,13 +159,52 @@ public class ProteinUpdate {
             // Get protein full (recommended) name
             protein.setProtein_name(proteinElement.getElementsByTagName("fullName").item(0).getTextContent());
 
-            // Get sequence and molecular weight
-            // Potential sequence nodes when there are isoforms, target should always be the last node
-            NodeList sequences = proteinElement.getElementsByTagName("sequence");
-            protein.setSequence(sequences.item(sequences.getLength() - 1).getTextContent()
-                    .replaceAll("[^A-Z]", "")); // Strip non-uppercase alpha characters
-            protein.setMolecular_weight(Double.valueOf(
-                    ((Element) sequences.item(sequences.getLength() - 1)).getAttribute("mass")));
+            // Get species
+            NodeList speciesNames = ((Element) proteinElement.getElementsByTagName("organism").item(0))
+                    .getElementsByTagName("name");
+            // Check scientific name first
+            String speciesName = speciesNames.item(0).getTextContent(); // First species name should be scientific
+            Species species = proteinDAO.searchSpecies(speciesName);
+            // Check common name if necessary
+            if (species == null && speciesNames.getLength() > 1) {
+                speciesName = speciesNames.item(1).getTextContent(); // Second species name should be common
+            }
+            species = proteinDAO.searchSpecies(speciesName);
+            // If neither scientific or common name are in the database, add the common name
+            if (species == null) {
+                proteinDAO.addSpecies(new Species(0, speciesName));
+                species = proteinDAO.searchSpecies(speciesName);
+            }
+            protein.setSpecies(species);
+
+            // Get gene(s)
+            Set<Gene> geneSet = new HashSet<>();
+            NodeList geneNodes = proteinElement.getElementsByTagName("gene");
+            if (geneNodes != null && geneNodes.getLength() > 0) {
+                NodeList geneNames = ((Element) geneNodes.item(0)).getElementsByTagName("name");
+                // Iterate through possible names
+                for (int geneNamesIndex = 0; geneNamesIndex < geneNames.getLength(); geneNamesIndex++) {
+                    String geneSymbol = geneNames.item(geneNamesIndex).getTextContent();
+                    Gene gene = getGeneFromSymbol(species, geneSymbol);
+
+                    // Try dashing the last digit (necessary for C. elegans: atp -> atp-6)
+                    if (gene == null && Character.isDigit(geneSymbol.charAt(geneSymbol.length() - 1))) {
+                        geneSymbol = geneSymbol.substring(0, geneSymbol.length() - 1) + "-" +
+                                geneSymbol.charAt(geneSymbol.length() - 1);
+                        gene = getGeneFromSymbol(species, geneSymbol);
+                    }
+
+                    if (gene != null) {
+                        geneSet.add(gene);
+                        break;
+                    }
+                }
+                protein.setGenes(geneSet);
+
+                if (geneSet.isEmpty()) {
+                    System.err.println("No genes found for " + protein.getProtein_acc());
+                }
+            }
 
             // Handle feature data (default empty strings)
             protein.setTransmembrane_domain("");
@@ -228,7 +267,6 @@ public class ProteinUpdate {
             }
 
             // Get dbReferences
-            Set<String> geneIDs = new HashSet<>();
             Set<GoTerms> goTerms = new HashSet<>();
             DBRef dbRef = new DBRef();
             List<String> pdb = new ArrayList<>();
@@ -243,17 +281,6 @@ public class ProteinUpdate {
                 }
 
                 String dbRefType = dbRefElement.getAttribute("type");
-
-                // Get gene IDs
-                if (dbRefType.startsWith("Ensembl") || dbRefType.startsWith("WormBase")) {
-                    Element property = (Element) dbRefElement.getElementsByTagName("property").item(1);
-                    if (property != null) {
-                        geneIDs.add(property.getAttribute("value"));
-                    }
-
-                    continue;
-                }
-
                 switch (dbRefType) {
                     case "PDB":
                         pdb.add(dbRefElement.getAttribute("id"));
@@ -263,12 +290,6 @@ public class ProteinUpdate {
                         break;
                     case "GeneWiki":
                         geneWiki.add(dbRefElement.getAttribute("id"));
-                        break;
-                    case "Proteomes":
-                        // Get chromosome
-                        protein.setChromosome(((Element) dbRefElement
-                                .getElementsByTagName("property").item(0))
-                                .getAttribute("value"));
                         break;
                     case "GO":
                         // Get GOTerms
@@ -293,26 +314,6 @@ public class ProteinUpdate {
                 }
             }
 
-            // Add single gene with UniProt gene name and concatenated gene IDs
-            Set<Gene> genes = new HashSet<>();
-            try {
-                Gene gene = new Gene();
-                gene.setGene_name(((Element) proteinElement
-                        .getElementsByTagName("gene").item(0))
-                        .getElementsByTagName("name").item(0)
-                        .getTextContent());
-                String ensembl_id = String.join(", ", geneIDs);
-                if(ensembl_id.length() >= 253)
-                    ensembl_id = ensembl_id.substring(0,252);
-                gene.setEnsembl_id(ensembl_id);
-
-                genes.add(gene);
-            }
-            catch (Exception ex) {
-                // do nothing, let it return an empty gene list
-            }
-            protein.setGenes(genes);
-
             protein.setGoTerms(goTerms);
             dbRef.setPdb(String.join("\n", pdb));
             dbRef.setReactome(String.join("\n", reactome));
@@ -336,52 +337,13 @@ public class ProteinUpdate {
             // Get feature table string
             protein.setFeature_table(featureTable.toString());
 
-            // Get species
-            NodeList speciesNames = ((Element) proteinElement.getElementsByTagName("organism").item(0))
-                    .getElementsByTagName("name");
-            // Check scientific name first
-            String speciesName = speciesNames.item(0).getTextContent(); // First species name should be scientific
-            Species species = proteinDAO.searchSpecies(speciesName);
-            // Check common name if necessary
-            if (species == null && speciesNames.getLength() > 1) {
-                speciesName = speciesNames.item(1).getTextContent(); // Second species name should be common
-            }
-            species = proteinDAO.searchSpecies(speciesName);
-            // If neither scientific or common name are in the database, add the common name
-            if (species == null) {
-                proteinDAO.addSpecies(new Species(0, speciesName));
-                species = proteinDAO.searchSpecies(speciesName);
-            }
-            protein.setSpecies(species);
-
-            // Get gene(s)
-            Set<Gene2> geneSet = new HashSet<>();
-            NodeList geneNodes = proteinElement.getElementsByTagName("gene");
-            if (geneNodes != null && geneNodes.getLength() > 0) {
-                NodeList geneNames = ((Element) geneNodes.item(0)).getElementsByTagName("name");
-                // Iterate through possible names
-                for (int geneNamesIndex = 0; geneNamesIndex < geneNames.getLength(); geneNamesIndex++) {
-                    String geneSymbol = geneNames.item(geneNamesIndex).getTextContent();
-                    Gene2 gene = getGeneFromSymbol(species, geneSymbol);
-
-                    // Try dashing the last digit (necessary for C. elegans: atp -> atp-6)
-                    if (gene == null && Character.isDigit(geneSymbol.charAt(geneSymbol.length() - 1))) {
-                        geneSymbol = geneSymbol.substring(0, geneSymbol.length() - 1) + "-" +
-                                geneSymbol.charAt(geneSymbol.length() - 1);
-                        gene = getGeneFromSymbol(species, geneSymbol);
-                    }
-
-                    if (gene != null) {
-                        geneSet.add(gene);
-                        break;
-                    }
-                }
-                protein.setGene(geneSet);
-
-                if (geneSet.isEmpty()) {
-                    System.err.println("No genes found for " + protein.getProtein_acc());
-                }
-            }
+            // Get sequence and molecular weight
+            // Potential sequence nodes when there are isoforms, target should always be the last node
+            NodeList sequences = proteinElement.getElementsByTagName("sequence");
+            protein.setSequence(sequences.item(sequences.getLength() - 1).getTextContent()
+                    .replaceAll("[^A-Z]", "")); // Strip non-uppercase alpha characters
+            protein.setMolecular_weight(Double.valueOf(
+                    ((Element) sequences.item(sequences.getLength() - 1)).getAttribute("mass")));
 
             return protein;
         }
@@ -443,7 +405,7 @@ public class ProteinUpdate {
      * @param symbol Gene symbol.
      * @return Gene object; null if not found.
      */
-    public static Gene2 getGeneFromSymbol(Species species, String symbol) {
+    public static Gene getGeneFromSymbol(Species species, String symbol) {
         try {
             // Generate URL
             String speciesName = species.getSpecies_name().replaceAll(" ", "%20"); // Format species name for URL
@@ -472,7 +434,7 @@ public class ProteinUpdate {
             reader.close();
 
             // Get gene data
-            Gene2 gene = new Gene2();
+            Gene gene = new Gene();
             String[] lines = sb.toString().split("\n");
             for (String line : lines) {
                 if (line.startsWith("error: ")) {
@@ -491,7 +453,7 @@ public class ProteinUpdate {
             }
             gene.setSpecies(species);
 
-            Gene2 dbGene = DAOObject.getInstance().getProteinDAO().searchGene(gene.getEnsembl_id());
+            Gene dbGene = DAOObject.getInstance().getProteinDAO().searchGene(gene.getEnsembl_id());
             if (dbGene != null) {
                 gene = dbGene;
             }
@@ -535,7 +497,6 @@ public class ProteinUpdate {
                 ProteinHistory proteinHistory = new ProteinHistory();
                 proteinHistory.setProtein_acc(protein_acc);
                 proteinHistory.setProtein_name(existingProtein.getProtein_name());
-                proteinHistory.setChromosome(existingProtein.getChromosome());
                 proteinHistory.setMolecular_weight(existingProtein.getMolecular_weight());
                 proteinHistory.setSequence(existingProtein.getSequence());
                 proteinHistory.setVersion(version);
@@ -555,7 +516,6 @@ public class ProteinUpdate {
             ProteinHistory proteinHistory = new ProteinHistory();
             proteinHistory.setProtein_acc(protein_acc);
             proteinHistory.setProtein_name(existingProtein.getProtein_name());
-            proteinHistory.setChromosome(existingProtein.getChromosome());
             proteinHistory.setMolecular_weight(existingProtein.getMolecular_weight());
             proteinHistory.setSequence(existingProtein.getSequence());
             proteinHistory.setVersion(version);
@@ -595,62 +555,5 @@ public class ProteinUpdate {
         // if did not exist in db but now exists on uniprot, do nothing
 
         return -1; // if failed and did nothing
-    }
-
-    /**
-     * Updates all proteins with new genes.
-     */
-    @Deprecated
-    public static void updateGenes() {
-        ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
-
-        int batchSize = 100;
-        int i = 0;
-        List<ProteinCurrent> proteins;
-        do {
-            proteins = proteinDAO.limitedList(i, batchSize);
-            i += batchSize;
-
-            // Iterate through proteins in batches
-            for (ProteinCurrent protein : proteins) {
-                System.out.println("Updating gene: " + protein.getProtein_acc());
-
-                // Create genes
-                if (protein.getGenes() == null || protein.getGenes().isEmpty()) {
-                    continue;
-                }
-
-                Gene oldGene = protein.getGenes().iterator().next();
-                String geneSymbol = oldGene.getGene_name();
-                Species species = protein.getSpecies();
-
-                Set<Gene2> genes = new HashSet<>();
-                Gene2 gene = getGeneFromSymbol(species, geneSymbol);
-
-                // Try dashing the last digit
-                if (gene == null && Character.isDigit(geneSymbol.charAt(geneSymbol.length()-1))) {
-                    geneSymbol = geneSymbol.substring(0, geneSymbol.length()-1) + "-" +
-                            geneSymbol.charAt(geneSymbol.length() - 1);
-                    gene = getGeneFromSymbol(species, geneSymbol);
-                }
-
-                // TODO Try old Ensembl IDs
-//                String[] geneRefs = oldGene.getEnsembl_id().split(", ");
-//                for (int j = 0; j < geneRefs.length; j++) {
-//                }
-
-                if (gene != null) {
-                    genes.add(gene);
-                }
-                protein.setGene(genes);
-
-                if (genes.isEmpty()) {
-                    System.err.println("No genes found for " + protein.getProtein_acc());
-                }
-
-                // Update proteins w/ ensembl_id
-                // proteinDAO.updateProteinCurrent(protein.getProtein_acc(), protein);
-            }
-        } while (!proteins.isEmpty());
     }
 }
