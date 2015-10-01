@@ -33,7 +33,8 @@ public class HPAUpdate {
 
     /**
      * Updates the HPA tables with HPA proteins
-     * @param filename
+     *
+     * @param filename Filename of HPA XML
      */
     public static void update(String filename) {
         FileInputStream inputStream = null;
@@ -45,6 +46,7 @@ public class HPAUpdate {
             // TODO Potential improvement by buffering more proteins at once (save DOM parse overhead?)
             StringBuilder buffer = null;
             ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
+            List<String> failedIDs = new ArrayList<>();
             while (sc.hasNextLine()) {
                 String line = sc.nextLine();
 
@@ -63,10 +65,12 @@ public class HPAUpdate {
                         buffer.append(HPA_XML_FOOTER + "\n");
                         try {
                             for (HPAProtein protein : parseProteinXML(buffer.toString())) {
-                                proteinDAO.addHPAProtein(protein);
+                                if (!addHPAProtein(protein)) {
+                                    failedIDs.add(protein.getEnsembl_id());
+                                }
                             }
-                        } catch (ParserConfigurationException | IOException | SAXException e) {
-                            // Continue
+                        } catch (ParserConfigurationException | SAXException e) {
+                            e.printStackTrace();
                         }
                         buffer = null;
                     }
@@ -75,9 +79,32 @@ public class HPAUpdate {
 
             sc.close();
             inputStream.close();
+
+            // Print failed IDs
+            failedIDs.forEach(System.out::println);
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public static boolean addHPAProtein(HPAProtein protein) {
+        ProteinDAO proteinDAO = DAOObject.getInstance().getProteinDAO();
+
+        try {
+            String result = proteinDAO.addHPAProtein(protein);
+
+            if (result.equals("Existed")) {
+                System.out.println(protein.getEnsembl_id() + " already exists");
+            } else {
+                System.out.println(protein.getEnsembl_id() + " added");
+            }
+        } catch (Exception e) {
+            System.err.println(protein.getEnsembl_id() + " failed");
+            e.printStackTrace();
+            return false;
+        }
+
+        return true;
     }
 
     public static List<HPAProtein> parseProteinXML(String xmlString)
