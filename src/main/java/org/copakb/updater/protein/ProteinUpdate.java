@@ -1,5 +1,6 @@
 package org.copakb.updater.protein;
 
+import org.apache.commons.lang3.StringEscapeUtils;
 import org.copakb.server.dao.DAOObject;
 import org.copakb.server.dao.ProteinDAO;
 import org.copakb.server.dao.model.*;
@@ -442,7 +443,7 @@ public class ProteinUpdate {
                     return null;
                 } else if (line.startsWith("display_name: ")) {
                     // Get display name
-                    gene.setGene_symbol(line.split(" ")[1]);
+                    gene.setGene_symbol(StringEscapeUtils.unescapeHtml4(line.split(" ")[1]));
                 } else if (line.startsWith("id: ")) {
                     // Get Ensembl ID
                     gene.setEnsembl_id(line.split(" ")[1]);
