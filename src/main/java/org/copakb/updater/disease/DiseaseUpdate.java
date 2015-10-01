@@ -147,8 +147,7 @@ public class DiseaseUpdate {
 
                     if (phenotypeMap.has("phenotype")) {
                         // FORMAT the name
-                        String name = phenotypeMap.getString("phenotype");
-                        disease.setName(name);
+                        disease.setName(phenotypeMap.getString("phenotype"));
                     } else {
                         continue;
                     }
@@ -179,8 +178,8 @@ public class DiseaseUpdate {
                         ex.printStackTrace();
                     }
 
-                    // default is false, until curation
-                    disease.setHeart_disease(false);
+                    // Flag heart disease if the name contains cardio or heart
+                    disease.setHeart_disease(disease.getName().contains("cardio") || disease.getName().contains("heart"));
                     diseases.add(disease);
                 }
             }
