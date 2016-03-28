@@ -39,7 +39,12 @@ public class DiseaseUpdate {
                 for (Disease disease : getDiseases(gene.getGene_symbol())) {
                     System.out.println("Adding: " + disease.getDOID());
                     diseaseDAO.addDisease(disease);
-                    diseaseDAO.addDiseaseGene(getDiseaseGene(disease, gene));
+                    DiseaseGene diseaseGene = getDiseaseGene(disease, gene);
+                    if (diseaseGene == null) {
+                        System.out.println("Could not retrieve " + disease.getDOID());
+                    } else {
+                        diseaseDAO.addDiseaseGene(diseaseGene);
+                    }
                 }
             }
 
@@ -85,25 +90,29 @@ public class DiseaseUpdate {
 
         // only takes first pubmed information with all necessary values
         JSONArray referenceLists = omim.getJSONArray("referenceLists");
-        JSONArray referenceList = referenceLists.getJSONObject(0).getJSONArray("referenceList");
-        JSONObject reference = null;
-        for (int i = 0; i < referenceList.length(); i++) { // iterate until it has an entry with all values
-            reference = referenceList.getJSONObject(i).getJSONObject("reference");
-            if (reference.has("authors") && reference.has("pubmedID") && reference.has("title")) {
-                diseaseGene.setPubmed_author("");
-                diseaseGene.setPubmed_id("");
-                diseaseGene.setPubmed_title("");
-                break;
+        if (referenceLists != null && referenceLists.length() > 0) {
+            JSONArray referenceList = referenceLists.getJSONObject(0).getJSONArray("referenceList");
+            JSONObject reference = null;
+            for (int i = 0; i < referenceList.length(); i++) { // iterate until it has an entry with all values
+                reference = referenceList.getJSONObject(i).getJSONObject("reference");
+                if (reference.has("authors") && reference.has("pubmedID") && reference.has("title")) {
+                    diseaseGene.setPubmed_author("");
+                    diseaseGene.setPubmed_id("");
+                    diseaseGene.setPubmed_title("");
+                    break;
+                }
             }
-        }
 
-        // in case no entry has all the values
-        try {
-            diseaseGene.setPubmed_author(reference.getString("authors"));
-            diseaseGene.setPubmed_id(String.valueOf(reference.getInt("pubmedID")));
-            diseaseGene.setPubmed_title(reference.getString("title"));
-        } catch (Exception e) {
-            System.out.println("Could not find referenced literature");
+            // in case no entry has all the values
+            try {
+                diseaseGene.setPubmed_author(reference.getString("authors"));
+                diseaseGene.setPubmed_id(String.valueOf(reference.getInt("pubmedID")));
+                diseaseGene.setPubmed_title(reference.getString("title"));
+            } catch (Exception e) {
+                System.out.println("Could not find referenced literature");
+            }
+        } else {
+            return null;
         }
 
         return diseaseGene;
